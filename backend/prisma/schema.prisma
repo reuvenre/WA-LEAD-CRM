@@ -1,0 +1,70 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum LeadStatus {
+  NEW
+  IN_PROGRESS
+  HOT
+  CLOSED
+  LOST
+}
+
+enum Priority {
+  Low
+  Med
+  High
+}
+
+enum MessageType {
+  text
+  image
+}
+
+enum MessageDirection {
+  inbound
+  outbound
+}
+
+enum MessageStatus {
+  sent
+  delivered
+  read
+}
+
+model Lead {
+  id            String     @id @default(cuid())
+  name          String
+  phone         String     @unique
+  status        LeadStatus @default(NEW)
+  priority      Priority   @default(Med)
+  lastMessageAt DateTime?
+  internalNotes String?
+  assignedTo    String?
+  messages      Message[]
+  createdAt     DateTime   @default(now())
+  updatedAt     DateTime   @updatedAt
+}
+
+model Message {
+  id        String           @id @default(cuid())
+  leadId    String
+  lead      Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  content   String
+  type      MessageType      @default(text)
+  direction MessageDirection
+  status    MessageStatus    @default(sent)
+  timestamp DateTime         @default(now())
+}
+
+model Template {
+  id       String @id @default(cuid())
+  title    String
+  body     String
+  category String
+}
