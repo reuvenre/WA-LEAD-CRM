@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import {
-  User, Phone, Calendar, StickyNote, TrendingUp, UserCheck, Save, Tag, History, FolderKanban, Mail, Building2, Clock,
+  User, Phone, Calendar, StickyNote, TrendingUp, UserCheck, Save, Tag, History, FolderKanban, Mail, Building2, Clock, Trash2,
 } from 'lucide-react';
 import { cn, STATUS_CONFIG, PRIORITY_CONFIG, ALL_PRIORITIES, formatTime, toDatetimeLocal, fromDatetimeLocal } from '@/lib/utils';
 import type { Lead, Priority, LeadStatus, Project } from '@/types';
@@ -13,11 +13,12 @@ import { api } from '@/lib/api';
 interface LeadDetailsProps {
   lead: Lead;
   onUpdate: (data: Partial<Lead>) => Promise<void>;
+  onDelete?: () => Promise<void> | void;
 }
 
 type Tab = 'info' | 'activity';
 
-export function LeadDetails({ lead, onUpdate }: LeadDetailsProps) {
+export function LeadDetails({ lead, onUpdate, onDelete }: LeadDetailsProps) {
   const [tab, setTab] = useState<Tab>('info');
   const [name, setName] = useState(lead.name ?? '');
   const [email, setEmail] = useState(lead.email ?? '');
@@ -29,6 +30,8 @@ export function LeadDetails({ lead, onUpdate }: LeadDetailsProps) {
   const [meetingNotes, setMeetingNotes] = useState(lead.meetingNotes ?? '');
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; username: string; role: string; active: boolean }>>([]);
 
@@ -42,6 +45,7 @@ export function LeadDetails({ lead, onUpdate }: LeadDetailsProps) {
     setMeetingDate(toDatetimeLocal(lead.meetingDate));
     setMeetingNotes(lead.meetingNotes ?? '');
     setDirty(false);
+    setConfirmDelete(false);
   }, [lead.id, lead.name, lead.email, lead.company, lead.internalNotes, lead.assignedTo, lead.tags, lead.meetingDate, lead.meetingNotes]);
 
   // Load projects and users for dropdowns
@@ -66,6 +70,17 @@ export function LeadDetails({ lead, onUpdate }: LeadDetailsProps) {
       setDirty(false);
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!onDelete) return;
+    setDeleting(true);
+    try {
+      await onDelete();
+    } finally {
+      setDeleting(false);
+      setConfirmDelete(false);
     }
   };
 
@@ -228,6 +243,36 @@ export function LeadDetails({ lead, onUpdate }: LeadDetailsProps) {
       ) : (
         <div className="flex-1 overflow-y-auto px-4 py-4">
           <ActivityLog activities={lead.activities ?? []} />
+        </div>
+      )}
+
+      {/* Delete lead */}
+      {onDelete && (
+        <div className="border-t border-surface-border p-3 flex-shrink-0">
+          {confirmDelete ? (
+            <div className="space-y-2">
+              <p className="text-xs text-slate-500 text-center leading-relaxed">
+                למחוק את <span className="font-semibold text-slate-700">{lead.name}</span> לצמיתות?
+                <br />כל ההודעות וההיסטוריה יימחקו.
+              </p>
+              <div className="flex gap-2">
+                <button onClick={handleDelete} disabled={deleting}
+                  className="flex-1 py-2 rounded-lg bg-red-600 hover:bg-red-700 text-white text-xs font-semibold transition disabled:opacity-50">
+                  {deleting ? 'מוחק...' : 'כן, מחק'}
+                </button>
+                <button onClick={() => setConfirmDelete(false)} disabled={deleting}
+                  className="flex-1 py-2 rounded-lg bg-slate-100 text-slate-600 text-xs font-semibold hover:bg-slate-200 transition">
+                  ביטול
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button onClick={() => setConfirmDelete(true)}
+              className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs text-red-600 hover:bg-red-50 transition font-semibold">
+              <Trash2 className="w-3.5 h-3.5" />
+              מחק ליד
+            </button>
+          )}
         </div>
       )}
     </div>

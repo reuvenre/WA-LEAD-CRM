@@ -108,6 +108,16 @@ export default function CRMPage() {
     setViewMode('chat');
   };
 
+  const handleLeadDelete = async () => {
+    if (!selectedLeadId) return;
+    const id = selectedLeadId;
+    await api.leads.delete(id);
+    setLeads((prev) => prev.filter((l) => l.id !== id));
+    setSelectedLeadId(null);
+    setSelectedLead(null);
+    setMessages([]);
+  };
+
   if (!ready) {
     return (
       <div className="flex h-screen items-center justify-center bg-surface-muted">
@@ -237,7 +247,7 @@ export default function CRMPage() {
       {/* ── Left Sidebar: Lead Details ── */}
       {selectedLead && viewMode === 'chat' && (
         <aside className="w-72 flex-shrink-0 border-r border-surface-border bg-white shadow-soft overflow-hidden flex flex-col">
-          <LeadDetails lead={selectedLead} onUpdate={handleLeadUpdate} />
+          <LeadDetails lead={selectedLead} onUpdate={handleLeadUpdate} onDelete={handleLeadDelete} />
         </aside>
       )}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
