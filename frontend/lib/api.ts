@@ -108,6 +108,12 @@ export const api = {
       request('/api/tenant/profile', { method: 'PATCH', body: JSON.stringify(data) }),
   },
 
+  google: {
+    status: () => request<{ configured: boolean; connected: boolean; email: string | null }>('/api/google/status'),
+    authUrl: () => request<{ url: string }>('/api/google/auth-url'),
+    disconnect: () => request<{ success: boolean }>('/api/google/disconnect', { method: 'POST' }),
+  },
+
   auth: {
     forgotPassword: (email: string) =>
       request<{ success: boolean; message: string }>('/api/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),

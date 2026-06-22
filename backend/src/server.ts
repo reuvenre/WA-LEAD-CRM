@@ -14,6 +14,7 @@ import { projectsRouter } from './routes/projects';
 import { authRouter } from './routes/auth';
 import { superAdminRouter } from './routes/superAdmin';
 import { tenantRouter } from './routes/tenant';
+import { googleRouter } from './routes/google';
 import { requireAuth } from './middleware/auth';
 import { initSocket } from './socket';
 import type { AuthPayload } from './middleware/auth';
@@ -42,6 +43,7 @@ app.use(express.json());
 // ─── Public routes ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRouter);
 app.use('/api/webhook', webhookRouter);
+app.use('/api/google', googleRouter); // mixes public (callback) + per-route requireAuth
 app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
 // ─── Protected routes ─────────────────────────────────────────────────────────

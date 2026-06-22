@@ -5,6 +5,7 @@ import { SOCKET_EVENTS } from '../socket';
 import { Server as SocketIOServer } from 'socket.io';
 import { logActivity } from '../lib/activity';
 import { triggerAutomations } from '../lib/automations';
+import { syncLeadMeeting } from '../lib/google';
 
 export const leadsRouter = Router();
 
@@ -131,6 +132,11 @@ leadsRouter.patch('/:id', async (req: Request, res: Response) => {
     }
     if (tags && JSON.stringify(tags) !== JSON.stringify(current.tags)) {
       await logActivity(lead.id, tenantId, 'עדכון תגיות', `תגיות: ${(tags as string[]).join(', ')}`);
+    }
+
+    // Reflect meeting changes into the acting user's Google Calendar (one-way, fire-and-forget)
+    if (meetingDate !== undefined) {
+      void syncLeadMeeting(lead, req.user!.userId);
     }
 
     const io: SocketIOServer = req.app.get('io');

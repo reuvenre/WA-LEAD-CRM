@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, ShieldCheck, Lock, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Check, UserCircle, Building2, Mail, Users, Plus, ToggleLeft, ToggleRight } from 'lucide-react';
+import { X, ShieldCheck, Lock, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Check, UserCircle, Building2, Mail, Users, Plus, ToggleLeft, ToggleRight, CalendarDays } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 
@@ -22,7 +22,7 @@ async function authFetch(path: string, body?: object, method?: string) {
 
 interface SettingsModalProps { onClose: () => void; }
 
-type Tab = 'profile' | 'agents' | '2fa' | 'password' | 'green-api';
+type Tab = 'profile' | 'agents' | '2fa' | 'password' | 'green-api' | 'google';
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
   const [tab, setTab] = useState<Tab>('profile');
@@ -41,6 +41,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           <TabBtn active={tab === 'profile'} onClick={() => setTab('profile')} icon={<UserCircle className="w-3.5 h-3.5" />} label="פרופיל" />
           <TabBtn active={tab === 'agents'} onClick={() => setTab('agents')} icon={<Users className="w-3.5 h-3.5" />} label="נציגים" />
           <TabBtn active={tab === 'green-api'} onClick={() => setTab('green-api')} icon={<Wifi className="w-3.5 h-3.5" />} label="Green API" />
+          <TabBtn active={tab === 'google'} onClick={() => setTab('google')} icon={<CalendarDays className="w-3.5 h-3.5" />} label="יומן" />
           <TabBtn active={tab === '2fa'} onClick={() => setTab('2fa')} icon={<ShieldCheck className="w-3.5 h-3.5" />} label="2FA" />
           <TabBtn active={tab === 'password'} onClick={() => setTab('password')} icon={<Lock className="w-3.5 h-3.5" />} label="סיסמה" />
         </div>
@@ -49,6 +50,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           {tab === 'profile' && <ProfileSettings />}
           {tab === 'agents' && <AgentsManagement />}
           {tab === 'green-api' && <GreenApiSettings />}
+          {tab === 'google' && <GoogleCalendarSettings />}
           {tab === '2fa' && <TwoFactorSetup />}
           {tab === 'password' && <ChangePassword onDone={onClose} />}
         </div>
@@ -415,6 +417,66 @@ function GreenApiSettings() {
         {saving ? 'שומר...' : success ? '✓ נשמר!' : 'שמור הגדרות'}
       </button>
     </form>
+  );
+}
+
+// ─── Google Calendar ──────────────────────────────────────────────────────────
+function GoogleCalendarSettings() {
+  const [status, setStatus] = useState<{ configured: boolean; connected: boolean; email: string | null } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const load = () => api.google.status().then((s) => { setStatus(s); setLoading(false); }).catch(() => setLoading(false));
+  useEffect(() => { load(); }, []);
+
+  const connect = async () => {
+    setBusy(true);
+    try {
+      const { url } = await api.google.authUrl();
+      window.location.href = url; // redirect to Google consent
+    } catch {
+      setBusy(false);
+    }
+  };
+
+  const disconnect = async () => {
+    setBusy(true);
+    try { await api.google.disconnect(); await load(); } finally { setBusy(false); }
+  };
+
+  if (loading) return <div className="p-6 text-center text-slate-400 text-sm">טוען...</div>;
+
+  return (
+    <div className="p-6 space-y-4">
+      <div className="bg-blue-50 rounded-xl p-4 text-xs text-blue-700 space-y-1">
+        <p className="font-semibold flex items-center gap-1"><CalendarDays className="w-3.5 h-3.5" /> סנכרון יומן Google</p>
+        <p>חבר את יומן Google האישי שלך — כל פגישה שתקבע על ליד תיווצר אוטומטית ביומן שלך.</p>
+      </div>
+
+      {!status?.configured ? (
+        <div className="flex items-start gap-2 text-amber-700 text-sm bg-amber-50 rounded-lg px-3 py-2">
+          <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+          <span>חיבור Google עדיין לא הוגדר בשרת. יש להגדיר <code>GOOGLE_CLIENT_ID</code> ו-<code>GOOGLE_CLIENT_SECRET</code>.</span>
+        </div>
+      ) : status.connected ? (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2 text-green-700 text-sm bg-green-50 rounded-lg px-3 py-2">
+            <CheckCircle className="w-4 h-4 flex-shrink-0" />
+            <span>מחובר{status.email ? ` — ${status.email}` : ''}</span>
+          </div>
+          <button onClick={disconnect} disabled={busy}
+            className="w-full py-2 rounded-lg bg-red-50 text-red-600 text-sm font-semibold hover:bg-red-100 transition disabled:opacity-50">
+            {busy ? 'מנתק...' : 'נתק את חשבון Google'}
+          </button>
+        </div>
+      ) : (
+        <button onClick={connect} disabled={busy}
+          className="w-full py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold transition disabled:opacity-50 flex items-center justify-center gap-2">
+          <CalendarDays className="w-4 h-4" />
+          {busy ? 'מעביר ל-Google...' : 'חבר את יומן Google'}
+        </button>
+      )}
+    </div>
   );
 }
 

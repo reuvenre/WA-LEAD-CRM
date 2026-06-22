@@ -86,6 +86,9 @@ model User {
   // 2FA per user (optional)
   totpSecret   String?
   totpEnabled  Boolean  @default(false)
+  // Google Calendar (one-way sync, per user)
+  googleRefreshToken String?
+  googleEmail        String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
@@ -130,6 +133,9 @@ model Lead {
   tags          String[]   @default([])
   meetingDate   DateTime?
   meetingNotes  String?
+  // Google Calendar event mirror (one-way sync)
+  googleEventId       String?
+  googleCalendarUserId String?
   messages      Message[]
   activities    Activity[]
   createdAt     DateTime   @default(now())
