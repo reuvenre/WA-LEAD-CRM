@@ -51,7 +51,7 @@ export function AddLeadModal({ onClose, onLeadAdded, onLeadsImported }: AddLeadM
 // ─── Manual Form ──────────────────────────────────────────────────────────────
 function ManualForm({ onClose, onLeadAdded }: { onClose: () => void; onLeadAdded: (lead: Lead) => void }) {
   const [form, setForm] = useState({
-    name: '', phone: '', status: 'NEW', priority: 'Med', assignedTo: '', internalNotes: '',
+    name: '', phone: '', email: '', company: '', status: 'NEW', priority: 'Med', assignedTo: '', internalNotes: '',
   });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -70,6 +70,8 @@ function ManualForm({ onClose, onLeadAdded }: { onClose: () => void; onLeadAdded
       const lead = await api.leads.create({
         name: form.name.trim(),
         phone: form.phone.trim(),
+        email: form.email.trim() || undefined,
+        company: form.company.trim() || undefined,
         status: form.status,
         priority: form.priority,
         assignedTo: form.assignedTo || undefined,
@@ -92,6 +94,15 @@ function ManualForm({ onClose, onLeadAdded }: { onClose: () => void; onLeadAdded
         </Field>
         <Field label="טלפון *">
           <input value={form.phone} onChange={(e) => set('phone', e.target.value)} placeholder="050-1234567" dir="ltr" className={inputCls} />
+        </Field>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="אימייל">
+          <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} placeholder="email@example.com" dir="ltr" className={inputCls} />
+        </Field>
+        <Field label="חברה">
+          <input value={form.company} onChange={(e) => set('company', e.target.value)} placeholder="שם החברה" className={inputCls} />
         </Field>
       </div>
 

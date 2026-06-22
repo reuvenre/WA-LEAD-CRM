@@ -37,7 +37,7 @@ export const api = {
       return request<LeadsResponse>(`/api/leads?${qs}`);
     },
     get: (id: string) => request<Lead & { messages: Message[] }>(`/api/leads/${id}`),
-    create: (data: { name: string; phone: string; status?: string; priority?: string; assignedTo?: string; internalNotes?: string; tags?: string[] }) =>
+    create: (data: { name: string; phone: string; email?: string; company?: string; status?: string; priority?: string; assignedTo?: string; internalNotes?: string; tags?: string[] }) =>
       request<Lead>('/api/leads', { method: 'POST', body: JSON.stringify(data) }),
     import: (leads: Array<{ name: string; phone: string; status?: string; priority?: string; assignedTo?: string; tags?: string }>) =>
       request<{ created: number; skipped: number; errors: string[] }>('/api/leads/import', { method: 'POST', body: JSON.stringify({ leads }) }),

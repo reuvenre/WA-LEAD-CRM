@@ -59,8 +59,9 @@ model Tenant {
   email        String     @unique
   plan         TenantPlan @default(TRIAL)
   active       Boolean    @default(true)
-  // Green API credentials (per tenant)
-  greenApiInstanceId String?
+  // Green API credentials (per tenant). A Green API instance belongs to exactly one
+  // tenant, so the instance id is unique (NULLs are allowed for unconfigured tenants).
+  greenApiInstanceId String?  @unique
   greenApiToken      String?
   greenApiWebhookUrl String?
   createdAt    DateTime   @default(now())

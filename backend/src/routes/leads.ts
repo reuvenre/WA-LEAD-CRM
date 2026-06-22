@@ -147,7 +147,7 @@ leadsRouter.patch('/:id', async (req: Request, res: Response) => {
 leadsRouter.post('/', async (req: Request, res: Response) => {
   try {
     const tenantId = req.user!.tenantId;
-    const { name, phone, status, priority, assignedTo, internalNotes, tags } = req.body;
+    const { name, phone, email, company, status, priority, assignedTo, internalNotes, tags } = req.body;
 
     if (!name || !phone) return res.status(400).json({ error: 'שם וטלפון הם שדות חובה' });
 
@@ -161,6 +161,8 @@ leadsRouter.post('/', async (req: Request, res: Response) => {
         tenantId,
         name: name.trim(),
         phone: normalizedPhone,
+        email: email?.trim() || null,
+        company: company?.trim() || null,
         status: (status as LeadStatus) ?? 'NEW',
         priority: (priority as Priority) ?? 'Med',
         assignedTo: assignedTo || null,
