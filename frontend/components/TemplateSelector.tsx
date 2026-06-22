@@ -3,15 +3,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { Search, Zap, X } from 'lucide-react';
 import { api } from '@/lib/api';
-import type { Template } from '@/types';
+import type { Lead, Template } from '@/types';
 import { cn } from '@/lib/utils';
+import { applyTemplateVars } from '@/lib/templateVars';
 
 interface TemplateSelectorProps {
   onSelect: (body: string) => void;
   onClose: () => void;
+  lead?: Lead;
 }
 
-export function TemplateSelector({ onSelect, onClose }: TemplateSelectorProps) {
+export function TemplateSelector({ onSelect, onClose, lead }: TemplateSelectorProps) {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
@@ -109,8 +111,10 @@ export function TemplateSelector({ onSelect, onClose }: TemplateSelectorProps) {
                 <TemplateItem
                   key={template.id}
                   template={template}
+                  lead={lead}
                   onSelect={() => {
-                    onSelect(template.body);
+                    const body = lead ? applyTemplateVars(template.body, lead) : template.body;
+                    onSelect(body);
                     onClose();
                   }}
                 />
@@ -124,12 +128,13 @@ export function TemplateSelector({ onSelect, onClose }: TemplateSelectorProps) {
 }
 
 function TemplateItem({
-  template,
-  onSelect,
+  template, lead, onSelect,
 }: {
   template: Template;
+  lead?: Lead;
   onSelect: () => void;
 }) {
+  const preview = lead ? applyTemplateVars(template.body, lead) : template.body;
   return (
     <button
       onClick={onSelect}
@@ -142,7 +147,7 @@ function TemplateItem({
         {template.title}
       </p>
       <p className="text-xs text-slate-400 mt-0.5 line-clamp-2 leading-relaxed">
-        {template.body}
+        {preview}
       </p>
     </button>
   );

@@ -8,11 +8,11 @@ export const messagesRouter = Router();
 // ─── GET /messages/:leadId ───────────────────────────────────────────────────
 messagesRouter.get('/:leadId', async (req: Request, res: Response) => {
   try {
+    const tenantId = req.user!.tenantId;
     const messages = await prisma.message.findMany({
-      where: { leadId: req.params.leadId },
+      where: { leadId: req.params.leadId, tenantId },
       orderBy: { timestamp: 'asc' },
     });
-
     return res.json(messages);
   } catch (error) {
     console.error('GET /messages/:leadId error:', error);
@@ -23,21 +23,26 @@ messagesRouter.get('/:leadId', async (req: Request, res: Response) => {
 // ─── POST /messages/send ─────────────────────────────────────────────────────
 messagesRouter.post('/send', async (req: Request, res: Response) => {
   try {
+    const tenantId = req.user!.tenantId;
     const { leadId, content, type = 'text' } = req.body;
 
-    if (!leadId || !content) {
-      return res.status(400).json({ error: 'leadId and content are required' });
-    }
+    if (!leadId || !content) return res.status(400).json({ error: 'leadId and content are required' });
 
-    const lead = await prisma.lead.findUnique({ where: { id: leadId } });
+    const lead = await prisma.lead.findFirst({ where: { id: leadId, tenantId } });
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
-    // Send via Green API
-    const result = await sendGreenAPIMessage(lead.phone, content, type);
+    // Get tenant's Green API credentials
+    const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
+    const result = await sendGreenAPIMessage(lead.phone, content, type, tenant?.greenApiInstanceId, tenant?.greenApiToken);
 
-    // Save message to DB
+    // Don't record a failed send as a delivered message — surface the failure so the UI can retry.
+    if (!result.success) {
+      return res.status(502).json({ error: result.error || 'שליחת ההודעה נכשלה' });
+    }
+
     const message = await prisma.message.create({
       data: {
+        tenantId,
         leadId,
         content,
         type: type === 'image' ? 'image' : 'text',
@@ -46,15 +51,10 @@ messagesRouter.post('/send', async (req: Request, res: Response) => {
       },
     });
 
-    // Update lead's lastMessageAt
-    await prisma.lead.update({
-      where: { id: leadId },
-      data: { lastMessageAt: new Date() },
-    });
+    await prisma.lead.update({ where: { id: leadId }, data: { lastMessageAt: new Date() } });
 
-    // Emit real-time event
     const io: SocketIOServer = req.app.get('io');
-    io.emit(SOCKET_EVENTS.NEW_MESSAGE, message);
+    io.to(tenantId).emit(SOCKET_EVENTS.NEW_MESSAGE, message);
 
     return res.json({ message, result });
   } catch (error) {
@@ -67,12 +67,10 @@ messagesRouter.post('/send', async (req: Request, res: Response) => {
 async function sendGreenAPIMessage(
   phone: string,
   content: string,
-  type: string
+  type: string,
+  idInstance?: string | null,
+  apiToken?: string | null,
 ): Promise<{ success: boolean; messageId?: string; error?: string }> {
-  const idInstance = process.env.GREEN_API_ID_INSTANCE;
-  const apiToken = process.env.GREEN_API_TOKEN;
-
-  // Mock mode when env vars are missing
   if (!idInstance || !apiToken) {
     console.log(`[MOCK] Sending to ${phone}: ${content.substring(0, 50)}`);
     return { success: true, messageId: `mock_${Date.now()}` };
@@ -87,18 +85,10 @@ async function sendGreenAPIMessage(
 
     if (type === 'image') {
       endpoint = `${baseUrl}/sendFileByUrl/${apiToken}`;
-      payload = {
-        chatId,
-        urlFile: content,
-        fileName: 'image.jpg',
-        caption: '',
-      };
+      payload = { chatId, urlFile: content, fileName: 'image.jpg', caption: '' };
     } else {
       endpoint = `${baseUrl}/sendMessage/${apiToken}`;
-      payload = {
-        chatId,
-        message: content,
-      };
+      payload = { chatId, message: content };
     }
 
     const response = await fetch(endpoint, {

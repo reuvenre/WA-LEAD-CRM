@@ -3,55 +3,81 @@ import express from 'express';
 import http from 'http';
 import cors from 'cors';
 import { Server as SocketIOServer } from 'socket.io';
+import jwt from 'jsonwebtoken';
 import { leadsRouter } from './routes/leads';
 import { messagesRouter } from './routes/messages';
 import { webhookRouter } from './routes/webhook';
 import { templatesRouter } from './routes/templates';
+import { analyticsRouter } from './routes/analytics';
+import { automationsRouter } from './routes/automations';
+import { projectsRouter } from './routes/projects';
+import { authRouter } from './routes/auth';
+import { superAdminRouter } from './routes/superAdmin';
+import { tenantRouter } from './routes/tenant';
+import { requireAuth } from './middleware/auth';
 import { initSocket } from './socket';
+import type { AuthPayload } from './middleware/auth';
+import { JWT_SECRET } from './lib/config';
 
 const app = express();
 const httpServer = http.createServer(app);
 
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: process.env.FRONTEND_URL || 'http://localhost:3002',
     methods: ['GET', 'POST'],
     credentials: true,
   },
 });
 
-// Store io instance for use in routes
 app.set('io', io);
 
-// Middleware
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
-    credentials: true,
-  })
-);
+app.use(cors({
+  origin: process.env.FRONTEND_URL || 'http://localhost:3002',
+  credentials: true,
+}));
 
-// JSON parser for all routes (Green API sends standard JSON)
 app.use(express.json());
 
-// Routes
-app.use('/api/leads', leadsRouter);
-app.use('/api/messages', messagesRouter);
-app.use('/api/templates', templatesRouter);
+// ─── Public routes ────────────────────────────────────────────────────────────
+app.use('/api/auth', authRouter);
 app.use('/api/webhook', webhookRouter);
+app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
 
-// Health check
-app.get('/health', (_req, res) => {
-  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+// ─── Protected routes ─────────────────────────────────────────────────────────
+app.use('/api/leads', requireAuth, leadsRouter);
+app.use('/api/messages', requireAuth, messagesRouter);
+app.use('/api/templates', requireAuth, templatesRouter);
+app.use('/api/analytics', requireAuth, analyticsRouter);
+app.use('/api/automations', requireAuth, automationsRouter);
+app.use('/api/projects', requireAuth, projectsRouter);
+app.use('/api/tenant', requireAuth, tenantRouter);          // per-tenant settings
+app.use('/api/super-admin', requireAuth, superAdminRouter); // super-admin only
+
+// ─── Socket.io — tenant rooms ─────────────────────────────────────────────────
+// Each client joins their tenantId room after connecting
+io.on('connection', (socket) => {
+  // Client sends JWT in handshake auth
+  const token = socket.handshake.auth?.token as string | undefined;
+  if (token) {
+    try {
+      const payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
+      if (payload.tenantId && payload.step !== '2fa_pending') {
+        socket.join(payload.tenantId);
+        console.log(`🔌 Socket joined room: ${payload.tenantId}`);
+      }
+    } catch {
+      // Invalid token — socket still connects but not in any room
+    }
+  }
 });
 
-// Socket.io
 initSocket(io);
 
 const PORT = process.env.PORT || 3001;
 httpServer.listen(PORT, () => {
   console.log(`🚀 Server running on http://localhost:${PORT}`);
-  console.log(`🔌 Socket.io enabled`);
+  console.log(`🔌 Socket.io with tenant rooms enabled`);
 });
 
 export { io };

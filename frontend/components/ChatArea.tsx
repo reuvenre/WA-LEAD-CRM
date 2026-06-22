@@ -135,6 +135,7 @@ export function ChatArea({ lead, messages, onSendMessage, onLeadUpdate }: ChatAr
               <TemplateSelector
                 onSelect={handleTemplateSelect}
                 onClose={() => setShowTemplates(false)}
+                lead={lead}
               />
             )}
           </div>

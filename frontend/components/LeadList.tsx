@@ -1,6 +1,6 @@
 'use client';
 
-import { Search, Users, ChevronDown } from 'lucide-react';
+import { Search, Users, ChevronDown, Plus } from 'lucide-react';
 import { cn, STATUS_CONFIG, formatTime, ALL_STATUSES } from '@/lib/utils';
 import type { Lead, LeadStatus } from '@/types';
 
@@ -13,6 +13,7 @@ interface LeadListProps {
   onSelect: (id: string) => void;
   onStatusFilterChange: (status: string) => void;
   onSearchChange: (search: string) => void;
+  onAddLead?: () => void;
 }
 
 export function LeadList({
@@ -24,6 +25,7 @@ export function LeadList({
   onSelect,
   onStatusFilterChange,
   onSearchChange,
+  onAddLead,
 }: LeadListProps) {
   return (
     <div className="flex flex-col h-full">
@@ -36,9 +38,20 @@ export function LeadList({
             </div>
             <h1 className="text-base font-bold text-slate-800">לידים</h1>
           </div>
-          <span className="text-xs text-slate-400 bg-surface-subtle px-2 py-0.5 rounded-full">
-            {leads.length}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-slate-400 bg-surface-subtle px-2 py-0.5 rounded-full">
+              {leads.length}
+            </span>
+            {onAddLead && (
+              <button
+                onClick={onAddLead}
+                className="w-7 h-7 flex items-center justify-center rounded-lg bg-brand-600 hover:bg-brand-700 text-white transition"
+                title="הוסף ליד"
+              >
+                <Plus className="w-4 h-4" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Search */}

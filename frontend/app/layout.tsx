@@ -2,8 +2,8 @@ import type { Metadata } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'מערכת ניהול לידים | WhatsApp CRM',
-  description: 'מערכת CRM לניהול לידים ושיחות WhatsApp',
+  title: 'WA Lead CRM | מבית Win Solutions',
+  description: 'מערכת CRM לניהול לידים ושיחות WhatsApp — מבית Win Solutions',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

@@ -31,6 +31,30 @@ export function formatFullTime(dateStr: string): string {
   });
 }
 
+/**
+ * Convert a stored UTC ISO timestamp into the value a <input type="datetime-local">
+ * expects ('YYYY-MM-DDTHH:mm' in the viewer's LOCAL time). Slicing the raw ISO string
+ * would show UTC wall-clock as if it were local, drifting the time by the tz offset.
+ */
+export function toDatetimeLocal(iso: string | null): string {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/**
+ * Convert a 'YYYY-MM-DDTHH:mm' datetime-local value (LOCAL time) back to a UTC ISO
+ * string for the API, so the backend stores an unambiguous instant.
+ */
+export function fromDatetimeLocal(local: string): string | null {
+  if (!local) return null;
+  const d = new Date(local); // datetime-local has no tz → parsed as local time
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
 export const STATUS_CONFIG: Record<
   LeadStatus,
   { label: string; color: string; bg: string; dot: string }
@@ -48,7 +72,7 @@ export const STATUS_CONFIG: Record<
     dot: 'bg-amber-500',
   },
   HOT: {
-    label: 'חם 🔥',
+    label: 'חם',
     color: 'text-red-700',
     bg: 'bg-red-50',
     dot: 'bg-red-500',

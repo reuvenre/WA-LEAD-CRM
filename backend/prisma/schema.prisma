@@ -7,6 +7,8 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+// ─── Enums ───────────────────────────────────────────────────────────────────
+
 enum LeadStatus {
   NEW
   IN_PROGRESS
@@ -37,22 +39,110 @@ enum MessageStatus {
   read
 }
 
+enum UserRole {
+  SUPER_ADMIN
+  ADMIN
+  AGENT
+}
+
+enum TenantPlan {
+  TRIAL
+  BASIC
+  PRO
+}
+
+// ─── Multi-Tenant Models ──────────────────────────────────────────────────────
+
+model Tenant {
+  id           String     @id @default(cuid())
+  name         String
+  email        String     @unique
+  plan         TenantPlan @default(TRIAL)
+  active       Boolean    @default(true)
+  // Green API credentials (per tenant)
+  greenApiInstanceId String?
+  greenApiToken      String?
+  greenApiWebhookUrl String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  users        User[]
+  leads        Lead[]
+  projects     Project[]
+  templates    Template[]
+  automations  AutomationWebhook[]
+}
+
+model User {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  username     String
+  passwordHash String
+  role         UserRole @default(AGENT)
+  active       Boolean  @default(true)
+  email        String?
+  // 2FA per user (optional)
+  totpSecret   String?
+  totpEnabled  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  activities   Activity[]
+  resetTokens  PasswordResetToken[]
+
+  @@unique([tenantId, username])
+}
+
+// ─── CRM Models (all scoped to tenant) ───────────────────────────────────────
+
+model Project {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  description String?
+  color       String   @default("#3B82F6")
+  active      Boolean  @default(true)
+  leads       Lead[]
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([tenantId, name])
+}
+
 model Lead {
   id            String     @id @default(cuid())
+  tenantId      String
+  tenant        Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  projectId     String?
+  project       Project?   @relation(fields: [projectId], references: [id], onDelete: SetNull)
   name          String
-  phone         String     @unique
+  email         String?
+  company       String?
+  phone         String
   status        LeadStatus @default(NEW)
   priority      Priority   @default(Med)
   lastMessageAt DateTime?
   internalNotes String?
   assignedTo    String?
+  tags          String[]   @default([])
+  meetingDate   DateTime?
+  meetingNotes  String?
   messages      Message[]
+  activities    Activity[]
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
+
+  @@unique([tenantId, phone])
+  @@index([tenantId, lastMessageAt])
+  @@index([tenantId, meetingDate])
+  @@index([projectId])
 }
 
 model Message {
   id        String           @id @default(cuid())
+  tenantId  String
   leadId    String
   lead      Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
   content   String
@@ -60,11 +150,58 @@ model Message {
   direction MessageDirection
   status    MessageStatus    @default(sent)
   timestamp DateTime         @default(now())
+
+  @@index([leadId, timestamp])
 }
 
 model Template {
   id       String @id @default(cuid())
+  tenantId String
+  tenant   Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   title    String
   body     String
   category String
+
+  @@index([tenantId])
+}
+
+model Activity {
+  id        String   @id @default(cuid())
+  tenantId  String
+  leadId    String
+  lead      Lead     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  actor     String   @default("מערכת")
+  action    String
+  details   String?
+  createdAt DateTime @default(now())
+
+  @@index([leadId, createdAt])
+  @@index([userId])
+}
+
+model AutomationWebhook {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name      String
+  url       String
+  events    String[]
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+
+  @@index([tenantId])
+}
+
+model PasswordResetToken {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  token     String   @unique
+  expiresAt DateTime
+  used      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
