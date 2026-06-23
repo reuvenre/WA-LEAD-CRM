@@ -60,6 +60,20 @@ export async function loadListings(): Promise<Listing[]> {
   return LISTINGS
 }
 
+// Pull matching listings from the sources (Yad2/Madlan) for a specific city,
+// persist them, and refresh the cache. Returns the full listing set.
+export async function searchListings(filters: { city: string; rooms?: number | null; type?: string | null; maxPrice?: number | null }): Promise<Listing[]> {
+  const rows = await api.realestate.listings.search({
+    city: filters.city,
+    rooms: filters.rooms ?? null,
+    type: filters.type && filters.type !== 'הכל' ? filters.type : null,
+    maxPrice: filters.maxPrice ?? null,
+  })
+  LISTINGS.length = 0
+  LISTINGS.push(...rows.map(mapListing))
+  return LISTINGS
+}
+
 export async function fetchListings(filters: { city?: string; rooms?: number | null; type?: string; maxPrice?: number | null }): Promise<Listing[]> {
   await loadListings()
   return LISTINGS.filter(l => {

@@ -126,6 +126,8 @@ export const api = {
     },
     listings: {
       list: () => request<ListingRow[]>('/api/realestate/listings'),
+      search: (data: { city: string; rooms?: number | null; type?: string | null; maxPrice?: number | null }) =>
+        request<ListingRow[]>('/api/realestate/listings/search', { method: 'POST', body: JSON.stringify(data) }),
       create: (data: Partial<ListingRow>) => request<ListingRow>('/api/realestate/listings', { method: 'POST', body: JSON.stringify(data) }),
       update: (id: string, data: Partial<ListingRow>) => request<ListingRow>(`/api/realestate/listings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
       remove: (id: string) => request<void>(`/api/realestate/listings/${id}`, { method: 'DELETE' }),

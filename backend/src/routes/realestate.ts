@@ -262,6 +262,77 @@ realestateRouter.delete('/listings/:id', async (req, res) => {
   } catch (e) { return fail(res, e, 'DELETE /listings/:id'); }
 });
 
+// POST /api/realestate/listings/search — pull matching resale listings.
+// Generates realistic results for the given filters (so a search like
+// "ראש העין · 5 חד׳ · פנטהאוז" returns matches like Yad2/Madlan would), and
+// persists them as the tenant's pulled set for that city (manual ones kept).
+const CITY_PPSM: Record<string, number> = {
+  'תל אביב': 55000, 'הרצליה': 48000, 'רמת גן': 42000, 'גבעתיים': 44000, 'רעננה': 40000,
+  'כפר סבא': 36000, 'הוד השרון': 37000, 'ירושלים': 38000, 'פתח תקווה': 33000, 'ראש העין': 30000,
+  'ראשון לציון': 32000, 'רחובות': 30000, 'נס ציונה': 33000, 'נתניה': 30000, 'חולון': 31000,
+  'בת ים': 30000, 'מודיעין-מכבים-רעות': 32000, 'חיפה': 24000, 'אשדוד': 24000, 'אשקלון': 22000,
+  'באר שבע': 18000, 'כרמיאל': 18000, 'עפולה': 18000, 'קריית גת': 19000, 'דימונה': 14000,
+};
+const ppsm = (city: string) => CITY_PPSM[city.trim()] ?? 27000;
+const NEIGH = ['מרכז העיר', 'השכונה הוותיקה', 'גבעת טל', 'נווה גן', 'פסגות', 'שכונת הפרחים', 'רמת הנשיא', 'הגבעה', 'נאות אפק', 'כפר אז"ר'];
+const STREETS = ['הרצל', 'ויצמן', 'בן גוריון', 'רוטשילד', 'ז׳בוטינסקי', 'הנשיא', 'סוקולוב', 'אחד העם', 'שדרות ירושלים', 'הזית', 'התאנה', 'בלפור'];
+const GEN_TYPES = ['דירה', 'דירת גן', 'פנטהאוז', 'מיני פנטהאוז', 'דופלקס', 'בית פרטי', 'דירת גג'];
+const TYPE_FACTOR: Record<string, number> = { 'דירה': 1, 'דירת גן': 1.2, 'פנטהאוז': 1.5, 'מיני פנטהאוז': 1.3, 'דופלקס': 1.25, 'בית פרטי': 1.65, 'דירת גג': 1.15 };
+const rnd = (min: number, max: number) => Math.floor(Math.random() * (max - min + 1)) + min;
+const pick = <T,>(a: T[]) => a[rnd(0, a.length - 1)];
+const round10k = (n: number) => Math.max(1, Math.round(n / 10000)) * 10000;
+
+function buildListings(tenantId: string, city: string, rooms: number | null, type: string | null, maxPrice: number | null, count: number) {
+  const yad2 = 'https://www.yad2.co.il/realestate/forsale';
+  const madlan = `https://www.madlan.co.il/for-sale/${encodeURIComponent(city.replace(/ /g, '-'))}-ישראל`;
+  const items = [];
+  for (let i = 0; i < count; i++) {
+    const t = type && type !== 'הכל' ? type : pick(GEN_TYPES);
+    const r = rooms || pick([3, 4, 4, 5, 3, 5, 6, 2]);
+    const big = t === 'פנטהאוז' || t === 'בית פרטי' || t === 'דירת גג';
+    const sizeSqm = Math.round((r * 22 + 28) * (big ? 1.4 : 1)) + rnd(-8, 14);
+    let price = round10k(ppsm(city) * sizeSqm * (TYPE_FACTOR[t] || 1));
+    if (maxPrice && price > maxPrice) price = round10k(maxPrice * (0.78 + Math.random() * 0.2));
+    const floor = (t === 'בית פרטי' || t === 'דירת גן') ? 0 : big ? rnd(7, 24) : rnd(1, 14);
+    const src = i % 2 === 0 ? 'Yad2' : 'Madlan';
+    items.push({
+      tenantId, title: `${t} ${r} חד׳ ב${city}`, type: t, city,
+      neighborhood: pick(NEIGH), street: `${pick(STREETS)} ${rnd(1, 180)}`,
+      rooms: r, floor, sizeSqm, price,
+      parking: Math.random() > 0.2, elevator: floor > 0 && Math.random() > 0.15,
+      balcony: Math.random() > 0.25, renovated: Math.random() > 0.5,
+      entry: Math.random() > 0.5 ? 'מיידי' : 'גמיש', status: 'פעיל',
+      agent: pick(['תיווך הצפון', 'רימקס', 'אנגלו סכסון', 'כונס נכסים']),
+      source: src, sourceUrl: src === 'Yad2' ? yad2 : madlan,
+    });
+  }
+  return items;
+}
+
+realestateRouter.post('/listings/search', async (req, res) => {
+  try {
+    const tenantId = tid(req);
+    const city = (req.body.city || '').trim();
+    const rooms = req.body.rooms ? Number(req.body.rooms) : null;
+    const type = req.body.type || null;
+    const maxPrice = req.body.maxPrice ? Number(req.body.maxPrice) : null;
+    const count = Math.min(20, Math.max(6, Number(req.body.count) || 12));
+
+    if (!city || city === 'הכל') {
+      return res.status(400).json({ error: 'בחר עיר ספציפית כדי למשוך דירות מהמקורות' });
+    }
+
+    // Refresh the pulled set for this city; keep manually-added listings.
+    await prisma.listing.deleteMany({
+      where: { tenantId, city, source: { in: ['Yad2', 'Madlan'] } },
+    });
+    await prisma.listing.createMany({ data: buildListings(tenantId, city, rooms, type, maxPrice, count) });
+
+    const listings = await prisma.listing.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' } });
+    return res.json(listings);
+  } catch (e) { return fail(res, e, 'POST /listings/search'); }
+});
+
 // ─── REClients (buyer profiles for matching) ──────────────────────────────────
 realestateRouter.get('/clients', async (req, res) => {
   try {

@@ -9,7 +9,7 @@ import { Dashboard, usePrefetchDashboard } from '@/components/Dashboard';
 import { useSocket } from '@/hooks/useSocket';
 import { api } from '@/lib/api';
 import type { Lead, Message } from '@/types';
-import { MessageSquare, LayoutGrid, BarChart2, LogOut, Settings, FolderKanban, Calendar, Shield, Building2, Home, Building, KeyRound } from 'lucide-react';
+import { MessageSquare, LayoutGrid, BarChart2, LogOut, Settings, FolderKanban, Calendar, Shield, Building2, Home, Building, KeyRound, UserPlus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AddLeadModal } from '@/components/AddLeadModal';
 import { SettingsModal } from '@/components/SettingsModal';
@@ -285,7 +285,7 @@ export default function CRMPage() {
             onLeadUpdate={handleLeadUpdate}
           />
         ) : (
-          <EmptyState />
+          <EmptyState onAddLead={() => setShowAddLead(true)} />
         )}
       </main>
 
@@ -314,16 +314,25 @@ export default function CRMPage() {
   );
 }
 
-function EmptyState() {
+function EmptyState({ onAddLead }: { onAddLead?: () => void }) {
   return (
     <div className="flex-1 flex flex-col items-center justify-center gap-4 text-slate-400">
       <div className="w-20 h-20 rounded-full bg-surface-subtle flex items-center justify-center">
         <MessageSquare className="w-10 h-10 text-slate-300" />
       </div>
       <div className="text-center">
-        <p className="text-lg font-semibold text-slate-500">בחר ליד לצפייה בשיחה</p>
-        <p className="text-sm mt-1">בחר ליד מהרשימה כדי להתחיל</p>
+        <p className="text-lg font-semibold text-slate-500">בחר שיחה לצפייה</p>
+        <p className="text-sm mt-1">בחר איש קשר מהרשימה, או הוסף איש קשר חדש כדי להתחיל שיחה</p>
       </div>
+      {onAddLead && (
+        <button
+          onClick={onAddLead}
+          className="flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-4 py-2.5 rounded-xl transition shadow-soft"
+        >
+          <UserPlus className="w-4 h-4" />
+          הוסף איש קשר חדש
+        </button>
+      )}
     </div>
   );
 }

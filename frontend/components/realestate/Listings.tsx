@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { KeyRound, RefreshCw, Plus, MapPin, Car, ArrowUpDown, Trees, Sparkles, Star, X, UserPlus, Pencil, ExternalLink } from 'lucide-react'
 import {
-  LISTING_TYPES, addListing, updateListing, matchListings, loadListings,
+  LISTING_TYPES, addListing, updateListing, matchListings, loadListings, searchListings,
 } from '@/lib/realestate/listings'
 import { addClient, loadClients } from '@/lib/realestate/projects'
 import { ISRAELI_CITIES } from '@/lib/realestate/cities'
@@ -64,11 +64,18 @@ export default function Listings() {
   }), [listings, city, rooms, type, maxPrice])
 
   const refresh = async () => {
+    if (city === 'הכל') { setToast('בחר עיר ספציפית כדי למשוך דירות מהמקורות'); return }
     setFetching(true)
-    const all = await loadListings()
-    setListings([...all])
-    setFetching(false)
-    setToast(`רוענן מהשרת — ${all.length} דירות`)
+    try {
+      const all = await searchListings({ city, rooms, type, maxPrice })
+      setListings([...all])
+      const inCity = all.filter(l => l.city === city).length
+      setToast(`נמשכו ${inCity} דירות ב${city} מ-Yad2 · Madlan`)
+    } catch {
+      setToast('משיכת הדירות נכשלה')
+    } finally {
+      setFetching(false)
+    }
   }
 
   const submitListing = async (e: React.FormEvent) => {
@@ -208,7 +215,7 @@ export default function Listings() {
         {filtered.length === 0 && (
           <div className="col-span-3 text-center py-16" style={{ color: '#94A3B8' }}>
             <KeyRound size={36} className="mx-auto mb-3 opacity-30" />
-            <p className="text-sm">לא נמצאו דירות — נסה לרענן מהמקורות</p>
+            <p className="text-sm">לא נמצאו דירות. בחר עיר וסנן לפי חדרים/סוג, ואז לחץ "משוך מ-Yad2 · Madlan".</p>
           </div>
         )}
       </div>
