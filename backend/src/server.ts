@@ -24,9 +24,33 @@ import { JWT_SECRET } from './lib/config';
 const app = express();
 const httpServer = http.createServer(app);
 
+// ─── CORS origin resolution ───────────────────────────────────────────────────
+// FRONTEND_URL may hold one or more comma-separated origins. We normalize away
+// trailing slashes and also auto-allow any *.vercel.app deployment (production +
+// preview URLs), so a brittle exact-match string can't silently block the app.
+const normalize = (s: string) => s.trim().replace(/\/+$/, '');
+const allowedOrigins = (process.env.FRONTEND_URL || 'http://localhost:3002')
+  .split(',')
+  .map(normalize)
+  .filter(Boolean);
+
+function isAllowedOrigin(origin?: string): boolean {
+  if (!origin) return true; // non-browser clients (curl, server-to-server)
+  const o = normalize(origin);
+  if (allowedOrigins.includes(o)) return true;
+  try {
+    const host = new URL(o).hostname;
+    if (host === 'localhost' || host.endsWith('.vercel.app')) return true;
+  } catch { /* malformed origin → reject below */ }
+  return false;
+}
+
+const corsOrigin: cors.CorsOptions['origin'] = (origin, cb) =>
+  isAllowedOrigin(origin) ? cb(null, true) : cb(new Error(`Origin not allowed: ${origin}`));
+
 const io = new SocketIOServer(httpServer, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3002',
+    origin: corsOrigin,
     methods: ['GET', 'POST'],
     credentials: true,
   },
@@ -35,7 +59,7 @@ const io = new SocketIOServer(httpServer, {
 app.set('io', io);
 
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3002',
+  origin: corsOrigin,
   credentials: true,
 }));
 
