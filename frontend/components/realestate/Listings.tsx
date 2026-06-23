@@ -1,25 +1,26 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react'
-import { KeyRound, RefreshCw, Plus, MapPin, Car, ArrowUpDown, Trees, Sparkles, Star, X, UserPlus } from 'lucide-react'
+import { KeyRound, RefreshCw, Plus, MapPin, Car, ArrowUpDown, Trees, Sparkles, Star, X, UserPlus, Pencil, ExternalLink } from 'lucide-react'
 import {
-  LISTINGS, LISTING_TYPES, CLIENT_PROFILES, fetchListings, addListing, matchListings,
+  LISTING_TYPES, addListing, updateListing, matchListings, loadListings,
 } from '@/lib/realestate/listings'
-import { addClient } from '@/lib/realestate/projects'
+import { addClient, loadClients } from '@/lib/realestate/projects'
 import { ISRAELI_CITIES } from '@/lib/realestate/cities'
 import { Modal, FormRow, TextInput, SelectInput, SubmitButton } from '@/components/realestate/Modal'
-import type { Listing, ListingType } from '@/lib/realestate/listings'
+import type { Listing, ListingType, ListingStatus } from '@/lib/realestate/listings'
 import type { ClientProfile } from '@/lib/realestate/types'
 
 const CITY_OPTS = ['הכל', ...ISRAELI_CITIES]
 const STATUS_BADGE: Record<string, string> = { 'פעיל': 'bg-green-100 text-green-700', 'בהמתנה': 'bg-yellow-100 text-yellow-700', 'נמכר': 'bg-slate-100 text-slate-500' }
 const SOURCE_BADGE: Record<string, string> = { 'Yad2': 'bg-amber-100 text-amber-700', 'Madlan': 'bg-slate-100 text-slate-600', 'CRM (ידני)': 'bg-blue-100 text-blue-700' }
 
-const NEW_LISTING = { title: '', type: 'דירה' as ListingType, city: '', neighborhood: '', street: '', rooms: '4', floor: '', size_sqm: '', price: '', parking: false, elevator: false, balcony: false, renovated: false }
+const NEW_LISTING = { title: '', type: 'דירה' as ListingType, city: '', neighborhood: '', street: '', rooms: '4', floor: '', size_sqm: '', price: '', parking: false, elevator: false, balcony: false, renovated: false, status: 'פעיל' as ListingStatus, sourceUrl: '' }
 const NEW_CLIENT = { name: '', phone: '', city: '', rooms: '4', budgetMax: '', deliveryYear: '2027' }
 
 export default function Listings() {
-  const [listings, setListings] = useState<Listing[]>(() => [...LISTINGS])
-  const [clients, setClients] = useState<ClientProfile[]>(() => [...CLIENT_PROFILES])
+  const [listings, setListings] = useState<Listing[]>([])
+  const [clients, setClients] = useState<ClientProfile[]>([])
+  const [loading, setLoading] = useState(true)
   const [fetching, setFetching] = useState(false)
   const [toast, setToast] = useState('')
   const [city, setCity] = useState('הכל')
@@ -31,8 +32,28 @@ export default function Listings() {
   const [nl, setNl] = useState({ ...NEW_LISTING })
   const [cf, setCf] = useState({ ...NEW_CLIENT })
   const [matchId, setMatchId] = useState('')
+  const [editing, setEditing] = useState<Listing | null>(null)
+
+  useEffect(() => {
+    Promise.all([loadListings(), loadClients()])
+      .then(([l, c]) => { setListings([...l]); setClients([...c]) })
+      .finally(() => setLoading(false))
+  }, [])
 
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t) }, [toast])
+
+  const openAdd = () => { setEditing(null); setNl({ ...NEW_LISTING }); setShowAdd(true) }
+  const openEdit = (l: Listing) => {
+    setEditing(l)
+    setNl({
+      title: l.title, type: l.type, city: l.city, neighborhood: l.neighborhood, street: l.street,
+      rooms: String(l.rooms), floor: String(l.floor), size_sqm: String(l.size_sqm), price: String(l.price),
+      parking: l.parking, elevator: l.elevator, balcony: l.balcony, renovated: l.renovated,
+      status: l.status, sourceUrl: l.sourceUrl,
+    })
+    setShowAdd(true)
+  }
+  const closeModal = () => { setShowAdd(false); setEditing(null); setNl({ ...NEW_LISTING }) }
 
   const filtered = useMemo(() => listings.filter(l => {
     if (city !== 'הכל' && l.city !== city) return false
@@ -44,32 +65,47 @@ export default function Listings() {
 
   const refresh = async () => {
     setFetching(true)
-    const r = await fetchListings({ city, rooms, type, maxPrice })
-    setListings(prev => prev.map(l => r.find(x => x.id === l.id) ?? l))
+    const all = await loadListings()
+    setListings([...all])
     setFetching(false)
-    setToast(`עודכנו ${r.length} דירות מ-Yad2 · Madlan`)
+    setToast(`רוענן מהשרת — ${all.length} דירות`)
   }
 
-  const submitListing = (e: React.FormEvent) => {
+  const submitListing = async (e: React.FormEvent) => {
     e.preventDefault()
-    const rec = addListing({
+    const payload: Omit<Listing, 'id'> = {
       title: nl.title, type: nl.type, city: nl.city, neighborhood: nl.neighborhood, street: nl.street,
       rooms: Number(nl.rooms) || 0, floor: Number(nl.floor) || 0, size_sqm: Number(nl.size_sqm) || 0,
       price: Number(nl.price) || 0, parking: nl.parking, elevator: nl.elevator, balcony: nl.balcony,
-      renovated: nl.renovated, entry: 'מיידי', status: 'פעיל', agent: 'משרד', source: 'CRM (ידני)',
-    })
-    setListings(prev => [rec, ...prev])
-    setShowAdd(false); setNl({ ...NEW_LISTING }); setToast(`הדירה "${rec.title}" נוספה`)
+      renovated: nl.renovated, entry: editing?.entry || 'מיידי', status: nl.status,
+      agent: editing?.agent || 'משרד', source: editing?.source || 'CRM (ידני)', sourceUrl: nl.sourceUrl,
+    }
+    if (editing) {
+      const rec = await updateListing(editing.id, payload)
+      setListings(prev => prev.map(l => l.id === editing.id ? rec : l))
+      setToast(`"${rec.title}" עודכנה`)
+    } else {
+      const rec = await addListing(payload)
+      setListings(prev => [rec, ...prev])
+      setToast(`הדירה "${rec.title}" נוספה`)
+    }
+    closeModal()
   }
 
-  const submitClient = (e: React.FormEvent) => {
+  const submitClient = async (e: React.FormEvent) => {
     e.preventDefault()
-    const rec = addClient({ name: cf.name, phone: cf.phone, city: cf.city, rooms: Number(cf.rooms) || 0, budgetMax: Number(cf.budgetMax) || 0, deliveryBy: `${cf.deliveryYear}-Q4` })
+    const rec = await addClient({ name: cf.name, phone: cf.phone, city: cf.city, rooms: Number(cf.rooms) || 0, budgetMax: Number(cf.budgetMax) || 0, deliveryBy: `${cf.deliveryYear}-Q4` })
     setClients(prev => [...prev, rec]); setMatchId(rec.id); setShowClient(false); setCf({ ...NEW_CLIENT }); setToast(`הלקוח "${rec.name}" נוסף`)
   }
 
   const client = clients.find(c => c.id === matchId)
   const matches = client ? matchListings(client) : []
+
+  if (loading) return (
+    <div className="flex items-center justify-center h-full">
+      <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full" />
+    </div>
+  )
 
   return (
     <div className="p-6 space-y-5" style={{ maxWidth: 1280 }}>
@@ -79,7 +115,7 @@ export default function Listings() {
           <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>נמשך מ-Yad2 · Madlan · מתאים למשרדי תיווך</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
-          <button onClick={() => setShowAdd(true)} style={{ background: '#fff', color: '#2563EB', border: '1px solid #BFDBFE', borderRadius: 6, padding: '9px 16px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
+          <button onClick={openAdd} style={{ background: '#fff', color: '#2563EB', border: '1px solid #BFDBFE', borderRadius: 6, padding: '9px 16px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
             <Plus size={14} /> דירה חדשה
           </button>
           <button onClick={refresh} disabled={fetching} style={{ background: '#2563EB', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 16px', fontSize: 12, fontWeight: 600, cursor: fetching ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, opacity: fetching ? 0.7 : 1 }}>
@@ -133,13 +169,19 @@ export default function Listings() {
       {/* Listings grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
         {filtered.map(l => (
-          <div key={l.id} className="data-card fade-in" style={{ padding: 16, opacity: l.status === 'נמכר' ? 0.6 : 1 }}>
+          <div key={l.id} onClick={() => openEdit(l)} title="לחץ לצפייה ועריכה" className="data-card fade-in" style={{ padding: 16, opacity: l.status === 'נמכר' ? 0.6 : 1, cursor: 'pointer' }}>
             <div className="flex justify-between items-start mb-2">
               <div style={{ flex: 1 }}>
                 <h3 className="text-sm font-semibold leading-tight" style={{ color: '#0F172A' }}>{l.title}</h3>
                 <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{l.type} · {l.neighborhood}</p>
               </div>
-              <span className={`status-badge ${STATUS_BADGE[l.status]}`}>{l.status}</span>
+              <div className="flex items-center gap-1.5" onClick={e => e.stopPropagation()}>
+                {l.sourceUrl && (
+                  <a href={l.sourceUrl} target="_blank" rel="noopener noreferrer" title="פתח את המודעה המקורית" className="text-slate-300 hover:text-blue-600 transition"><ExternalLink size={13} /></a>
+                )}
+                <button onClick={() => openEdit(l)} title="עריכה" className="text-slate-300 hover:text-blue-600 transition"><Pencil size={13} /></button>
+                <span className={`status-badge ${STATUS_BADGE[l.status]}`}>{l.status}</span>
+              </div>
             </div>
             <p className="text-xs flex items-center gap-1 mb-2" style={{ color: '#64748B' }}><MapPin size={11} />{l.street}, {l.city}</p>
             <div className="flex items-baseline justify-between mb-3">
@@ -171,8 +213,8 @@ export default function Listings() {
         )}
       </div>
 
-      {/* Add listing modal */}
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="דירה חדשה" subtitle="הוספת דירה למכירה (יד שנייה)" width={520}>
+      {/* Add / edit listing modal */}
+      <Modal open={showAdd} onClose={closeModal} title={editing ? 'פרטי הדירה' : 'דירה חדשה'} subtitle={editing ? 'צפייה ועריכה — כל הפרטים ניתנים לעדכון' : 'הוספת דירה למכירה (יד שנייה)'} width={520}>
         <form onSubmit={submitListing} className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <FormRow label="כותרת"><TextInput value={nl.title} onChange={e => setNl(f => ({ ...f, title: e.target.value }))} required /></FormRow>
@@ -184,7 +226,9 @@ export default function Listings() {
             <FormRow label="קומה"><TextInput type="number" value={nl.floor} onChange={e => setNl(f => ({ ...f, floor: e.target.value }))} /></FormRow>
             <FormRow label="גודל (מ״ר)"><TextInput type="number" value={nl.size_sqm} onChange={e => setNl(f => ({ ...f, size_sqm: e.target.value }))} /></FormRow>
             <FormRow label="מחיר (₪)"><TextInput type="number" value={nl.price} onChange={e => setNl(f => ({ ...f, price: e.target.value }))} required /></FormRow>
+            <FormRow label="סטטוס"><SelectInput value={nl.status} onChange={e => setNl(f => ({ ...f, status: e.target.value as ListingStatus }))}>{(['פעיל', 'בהמתנה', 'נמכר'] as ListingStatus[]).map(s => <option key={s} value={s}>{s}</option>)}</SelectInput></FormRow>
           </div>
+          <FormRow label="קישור למודעה המקורית (Yad2 / Madlan)"><TextInput type="url" value={nl.sourceUrl} onChange={e => setNl(f => ({ ...f, sourceUrl: e.target.value }))} placeholder="https://www.yad2.co.il/item/..." /></FormRow>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, color: '#374151' }}>
             {([['parking', 'חניה'], ['elevator', 'מעלית'], ['balcony', 'מרפסת'], ['renovated', 'משופצת']] as const).map(([k, label]) => (
               <label key={k} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -192,7 +236,12 @@ export default function Listings() {
               </label>
             ))}
           </div>
-          <SubmitButton>הוסף דירה</SubmitButton>
+          {editing?.sourceUrl && (
+            <a href={editing.sourceUrl} target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 w-full bg-blue-50 hover:bg-blue-100 text-blue-700 py-2 rounded-lg text-sm font-medium transition-colors">
+              <ExternalLink size={15} /> צפה במודעה המקורית
+            </a>
+          )}
+          <SubmitButton>{editing ? 'שמור שינויים' : 'הוסף דירה'}</SubmitButton>
         </form>
       </Modal>
 

@@ -72,6 +72,12 @@ model Tenant {
   projects     Project[]
   templates    Template[]
   automations  AutomationWebhook[]
+  // Real-estate domain (added in phase-2 integration)
+  deals        Deal[]
+  properties   Property[]
+  reProjects   REProject[]
+  listings     Listing[]
+  reClients    REClient[]
 }
 
 model User {
@@ -211,4 +217,112 @@ model PasswordResetToken {
   createdAt DateTime @default(now())
 
   @@index([userId])
+}
+
+// ─── Real-Estate Domain Models (phase-2 integration, all tenant-scoped) ───────
+
+model Deal {
+  id             String   @id @default(cuid())
+  tenantId       String
+  tenant         Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  projectName    String
+  blockParcel    String?
+  city           String?
+  status         String   @default("Scouting") // Scouting|Underwriting|Active|Closed|Rejected
+  gdv            Float    @default(0)           // Estimated Sales Value (GDV)
+  expectedMargin Float    @default(0)           // Expected developer margin %
+  riskAlert      Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model Property {
+  id                 String   @id @default(cuid())
+  tenantId           String
+  tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title              String
+  addressCity        String?
+  priceRequested     Float    @default(0)
+  status             String   @default("Active") // Active|Expired|Pending|Cancelled
+  exclusivityEndDate String?                      // YYYY-MM-DD
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model REProject {
+  id               String   @id @default(cuid())
+  tenantId         String
+  tenant           Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  projectName      String
+  developer        String?
+  city             String?
+  neighborhood     String?
+  address          String?
+  status           String   @default("under_construction")
+  expectedDelivery String?
+  deliveryEarliest String?
+  deliveryLatest   String?
+  totalUnits       Int      @default(0)
+  availableUnits   Int?     // null => "לא ידוע"
+  unitTypes        Int[]    @default([])
+  priceMin         Float?
+  priceMax         Float?
+  amenities        String[] @default([])
+  urbanRenewal     Boolean  @default(false)
+  urbanRenewalType String?
+  salesOffice      String?
+  source           String   @default("CRM (ידני)")
+  sourceTier       Int      @default(5)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model Listing {
+  id           String   @id @default(cuid())
+  tenantId     String
+  tenant       Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  title        String
+  type         String   @default("דירה")
+  city         String?
+  neighborhood String?
+  street       String?
+  rooms        Int      @default(0)
+  floor        Int      @default(0)
+  sizeSqm      Int      @default(0)
+  price        Float    @default(0)
+  parking      Boolean  @default(false)
+  elevator     Boolean  @default(false)
+  balcony      Boolean  @default(false)
+  renovated    Boolean  @default(false)
+  entry        String   @default("מיידי")
+  status       String   @default("פעיל") // פעיל|בהמתנה|נמכר
+  agent        String?
+  source       String   @default("CRM (ידני)")
+  sourceUrl    String   @default("") // direct link to the original ad (Yad2/Madlan)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([tenantId])
+}
+
+model REClient {
+  id         String   @id @default(cuid())
+  tenantId   String
+  tenant     Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name       String
+  phone      String?
+  city       String?
+  rooms      Int      @default(0)
+  budgetMax  Float    @default(0)
+  deliveryBy String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([tenantId])
 }

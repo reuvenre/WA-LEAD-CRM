@@ -11,6 +11,7 @@ import { templatesRouter } from './routes/templates';
 import { analyticsRouter } from './routes/analytics';
 import { automationsRouter } from './routes/automations';
 import { projectsRouter } from './routes/projects';
+import { realestateRouter } from './routes/realestate';
 import { authRouter } from './routes/auth';
 import { superAdminRouter } from './routes/superAdmin';
 import { tenantRouter } from './routes/tenant';
@@ -53,6 +54,7 @@ app.use('/api/templates', requireAuth, templatesRouter);
 app.use('/api/analytics', requireAuth, analyticsRouter);
 app.use('/api/automations', requireAuth, automationsRouter);
 app.use('/api/projects', requireAuth, projectsRouter);
+app.use('/api/realestate', requireAuth, realestateRouter);
 app.use('/api/tenant', requireAuth, tenantRouter);          // per-tenant settings
 app.use('/api/super-admin', requireAuth, superAdminRouter); // super-admin only
 

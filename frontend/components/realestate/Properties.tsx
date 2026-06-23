@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect } from 'react'
-import { Camera, X, CheckCircle, AlertTriangle, Home, FileSignature, ScanLine, Plus } from 'lucide-react'
-import { getProperties, scanDocument, addProperty } from '@/lib/realestate/db'
+import { Camera, X, CheckCircle, AlertTriangle, Home, FileSignature, ScanLine, Plus, Pencil } from 'lucide-react'
+import { getProperties, scanDocument, addProperty, updateProperty } from '@/lib/realestate/db'
 import { Modal, FormRow, TextInput, SelectInput, SubmitButton } from '@/components/realestate/Modal'
 import { ISRAELI_CITIES } from '@/lib/realestate/cities'
 import type { ScanResult } from '@/lib/realestate/types'
@@ -27,21 +27,38 @@ export default function Properties() {
   const [showAdd, setShowAdd] = useState(false)
   const [np, setNp] = useState({ ...NEW_PROP })
   const [saving, setSaving] = useState(false)
+  const [editId, setEditId] = useState<string | null>(null)
+
+  const openAdd = () => { setEditId(null); setNp({ ...NEW_PROP }); setShowAdd(true) }
+  const openEdit = (p: any) => {
+    setEditId(p.id)
+    setNp({ title: p['Property Title'] || '', street: p['Address & City'] || '', city: '', price: String(p['Price Requested'] || ''), status: p['Status'] || 'Active', endDate: p['Exclusivity End Date'] || '' })
+    setShowAdd(true)
+  }
+  const closeModal = () => { setShowAdd(false); setEditId(null); setNp({ ...NEW_PROP }) }
 
   const submitProperty = async (e: React.FormEvent) => {
     e.preventDefault()
     setSaving(true)
-    const rec = await addProperty({
+    const fields = {
       'Property Title': np.title,
       'Address & City': [np.street, np.city].filter(Boolean).join(', '),
       'Price Requested': Number(np.price) || 0,
       'Status': np.status,
       'Exclusivity End Date': np.endDate,
-    })
-    setProperties(prev => [rec, ...prev])
-    setSaving(false)
-    setShowAdd(false)
-    setNp({ ...NEW_PROP })
+    }
+    try {
+      if (editId) {
+        const rec = await updateProperty(editId, fields)
+        setProperties(prev => prev.map(p => p.id === editId ? rec : p))
+      } else {
+        const rec = await addProperty(fields)
+        setProperties(prev => [rec, ...prev])
+      }
+      closeModal()
+    } finally {
+      setSaving(false)
+    }
   }
 
   useEffect(() => {
@@ -83,15 +100,15 @@ export default function Properties() {
           <p className="text-slate-500 text-sm">{properties.length} נכסים</p>
         </div>
         <button
-          onClick={() => setShowAdd(true)}
+          onClick={openAdd}
           style={{ background: '#2563EB', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 16px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}
         >
           <Plus size={14} /> נכס חדש
         </button>
       </div>
 
-      {/* Add property modal */}
-      <Modal open={showAdd} onClose={() => setShowAdd(false)} title="נכס חדש" subtitle="הוספת נכס וחוזה בלעדיות">
+      {/* Add / edit property modal */}
+      <Modal open={showAdd} onClose={closeModal} title={editId ? 'עריכת נכס' : 'נכס חדש'} subtitle={editId ? 'עדכון פרטי הנכס' : 'הוספת נכס וחוזה בלעדיות'}>
         <form onSubmit={submitProperty} className="space-y-3">
           <FormRow label="כותרת הנכס">
             <TextInput value={np.title} onChange={e => setNp(f => ({ ...f, title: e.target.value }))} placeholder="פנטהאוז רוטשילד 45" required />
@@ -116,7 +133,7 @@ export default function Properties() {
           <FormRow label="תאריך סיום בלעדיות">
             <TextInput type="date" value={np.endDate} onChange={e => setNp(f => ({ ...f, endDate: e.target.value }))} required />
           </FormRow>
-          <SubmitButton disabled={saving}>{saving ? 'שומר…' : 'הוסף נכס'}</SubmitButton>
+          <SubmitButton disabled={saving}>{saving ? 'שומר…' : editId ? 'שמור שינויים' : 'הוסף נכס'}</SubmitButton>
         </form>
       </Modal>
 
@@ -128,9 +145,12 @@ export default function Properties() {
             <div key={p.id} className={`bg-white rounded-xl p-4 shadow-sm border transition-shadow hover:shadow-md ${isExpiringSoon ? 'border-orange-200' : 'border-slate-100'}`}>
               <div className="flex justify-between items-start mb-2">
                 <h3 className="font-semibold text-slate-800 text-sm">{p['Property Title']}</h3>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[p['Status']] || 'bg-slate-100 text-slate-600'}`}>
-                  {STATUS_HE[p['Status']] || p['Status']}
-                </span>
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => openEdit(p)} title="עריכה" className="text-slate-300 hover:text-blue-600 transition"><Pencil size={13} /></button>
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_BADGE[p['Status']] || 'bg-slate-100 text-slate-600'}`}>
+                    {STATUS_HE[p['Status']] || p['Status']}
+                  </span>
+                </div>
               </div>
               <p className="text-xs text-slate-400 mb-3">{p['Address & City']}</p>
               <p className="text-sm font-semibold text-slate-700 mb-3">₪{(p['Price Requested'] || 0).toLocaleString()}</p>

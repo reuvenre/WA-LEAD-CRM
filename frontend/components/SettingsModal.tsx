@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, ShieldCheck, Lock, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Check, UserCircle, Building2, Mail, Users, Plus, ToggleLeft, ToggleRight, CalendarDays } from 'lucide-react';
+import { X, ShieldCheck, Lock, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Check, UserCircle, Building2, Mail, Users, Plus, ToggleLeft, ToggleRight, CalendarDays, Trash2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 
@@ -201,6 +201,16 @@ function AgentsManagement() {
     } catch {}
   };
 
+  const handleDeleteUser = async (id: string, username: string) => {
+    if (!confirm(`להסיר את ${username} מהמערכת? פעולה זו בלתי הפיכה.`)) return;
+    try {
+      await api.tenant.deleteUser(id);
+      setUsers(prev => prev.filter(u => u.id !== id));
+    } catch (e) {
+      alert(e instanceof Error ? e.message : 'הסרת המשתמש נכשלה');
+    }
+  };
+
   if (loading) return <div className="p-6 text-center text-slate-400 text-sm">טוען...</div>;
 
   return (
@@ -235,8 +245,14 @@ function AgentsManagement() {
               <option value="AGENT">נציג</option>
             </select>
             <button onClick={() => handleToggleActive(user.id, user.active)}
+              title={user.active ? 'נעילת משתמש' : 'שחרור משתמש'}
               className={cn('transition', user.active ? 'text-green-500 hover:text-red-500' : 'text-slate-300 hover:text-green-500')}>
               {user.active ? <ToggleRight className="w-6 h-6" /> : <ToggleLeft className="w-6 h-6" />}
+            </button>
+            <button onClick={() => handleDeleteUser(user.id, user.username)}
+              title="הסרת משתמש"
+              className="text-slate-300 hover:text-red-500 transition">
+              <Trash2 className="w-4 h-4" />
             </button>
           </div>
         ))}

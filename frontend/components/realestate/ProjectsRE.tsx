@@ -1,8 +1,9 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react'
-import { Building, RefreshCw, Star, MapPin, X, Sparkles, Plus, UserPlus } from 'lucide-react'
+import { Building, RefreshCw, Star, MapPin, X, Sparkles, Plus, UserPlus, Pencil } from 'lucide-react'
 import {
-  PROJECTS, CLIENT_PROFILES, CITIES, fetchProjects, matchClient, addProject, addClient,
+  PROJECTS, CITIES, fetchProjects, matchClient, addProject, addClient,
+  loadProjects, loadClients, updateProject,
 } from '@/lib/realestate/projects'
 import { ISRAELI_CITIES } from '@/lib/realestate/cities'
 import { Modal, FormRow, TextInput, SelectInput, SubmitButton } from '@/components/realestate/Modal'
@@ -39,23 +40,49 @@ const priceRange = (p: Project) =>
     : `₪${(p.price_min / 1e6).toFixed(2)}M – ₪${(p.price_max / 1e6).toFixed(2)}M`
 
 export default function Projects() {
-  const [projects, setProjects] = useState<Project[]>(() => [...PROJECTS])
+  const [projects, setProjects] = useState<Project[]>([])
+  const [loading, setLoading] = useState(true)
   const [fetching, setFetching] = useState(false)
   const [toast, setToast] = useState('')
+  const [editId, setEditId] = useState<string | null>(null)
   const [city, setCity] = useState('הכל')
   const [status, setStatus] = useState<'all' | 'existing' | 'future'>('all')
   const [rooms, setRooms] = useState<number | null>(null)
   const [matchClientId, setMatchClientId] = useState('')
-  const [clients, setClients] = useState<ClientProfile[]>(() => [...CLIENT_PROFILES])
+  const [clients, setClients] = useState<ClientProfile[]>([])
   const [showAddProj, setShowAddProj] = useState(false)
   const [showAddClient, setShowAddClient] = useState(false)
   const [pf, setPf] = useState({ ...NEW_PROJ })
   const [cf, setCf] = useState({ ...NEW_CLIENT })
 
-  const submitProject = (e: React.FormEvent) => {
+  // Load from the backend on mount
+  useEffect(() => {
+    Promise.all([loadProjects(), loadClients()])
+      .then(([p, c]) => { setProjects([...p]); setClients([...c]) })
+      .finally(() => setLoading(false))
+  }, [])
+
+  const openAddProj = () => { setEditId(null); setPf({ ...NEW_PROJ }); setShowAddProj(true) }
+  const openEditProj = (p: Project) => {
+    setEditId(p.id)
+    setPf({
+      project_name: p.project_name, developer: p.developer, city: p.city, neighborhood: p.neighborhood,
+      address: p.address, status: p.status, delivery: p.expected_delivery,
+      total_units: String(p.total_units || ''),
+      available_units: p.available_units === 'לא ידוע' ? '' : String(p.available_units),
+      unit_types: p.unit_types.join(','),
+      price_min: p.price_min == null ? '' : String(p.price_min),
+      price_max: p.price_max == null ? '' : String(p.price_max),
+      urban_renewal: p.urban_renewal,
+    })
+    setShowAddProj(true)
+  }
+  const closeProjModal = () => { setShowAddProj(false); setEditId(null); setPf({ ...NEW_PROJ }) }
+
+  const submitProject = async (e: React.FormEvent) => {
     e.preventDefault()
     const yr = yearOf(pf.delivery)
-    const rec = addProject({
+    const payload: Omit<Project, 'id'> = {
       project_name: pf.project_name, developer: pf.developer || 'לא ידוע',
       city: pf.city, neighborhood: pf.neighborhood, address: pf.address,
       status: pf.status,
@@ -68,16 +95,22 @@ export default function Projects() {
       price_max: pf.price_max ? Number(pf.price_max) : null,
       amenities: [], urban_renewal: pf.urban_renewal,
       sales_office: 'לא ידוע', source: 'CRM (ידני)', source_tier: 5,
-    })
-    setProjects(prev => [rec, ...prev])
-    setShowAddProj(false)
-    setPf({ ...NEW_PROJ })
-    setToast(`הפרויקט "${rec.project_name}" נוסף ל-CRM`)
+    }
+    if (editId) {
+      const rec = await updateProject(editId, payload)
+      setProjects(prev => prev.map(p => p.id === editId ? rec : p))
+      setToast(`הפרויקט "${rec.project_name}" עודכן`)
+    } else {
+      const rec = await addProject(payload)
+      setProjects(prev => [rec, ...prev])
+      setToast(`הפרויקט "${rec.project_name}" נוסף ל-CRM`)
+    }
+    closeProjModal()
   }
 
-  const submitClient = (e: React.FormEvent) => {
+  const submitClient = async (e: React.FormEvent) => {
     e.preventDefault()
-    const rec = addClient({
+    const rec = await addClient({
       name: cf.name, phone: cf.phone, city: cf.city,
       rooms: Number(cf.rooms) || 0, budgetMax: Number(cf.budgetMax) || 0,
       deliveryBy: `${cf.deliveryYear}-Q4`,
@@ -106,10 +139,9 @@ export default function Projects() {
   const refresh = async () => {
     setFetching(true)
     const r = await fetchProjects({ city, status, rooms })
-    // merge the freshly "fetched" records back, preserving the canonical order
-    setProjects(prev => prev.map(p => r.find(x => x.id === p.id) ?? p))
+    setProjects([...PROJECTS])
     setFetching(false)
-    setToast(`עודכנו ${r.length} פרויקטים מ-Yad2 · Madlan · Nadlan.gov.il · רמ"י`)
+    setToast(`רוענן מהשרת — ${r.length} פרויקטים תואמי סינון`)
   }
 
   // Data-quality flags (skill Step 6)
@@ -122,6 +154,12 @@ export default function Projects() {
   const client: ClientProfile | undefined = clients.find(c => c.id === matchClientId)
   const matches = client ? matchClient(client) : []
 
+  if (loading) return (
+    <div className="flex items-center justify-center h-full">
+      <div className="animate-spin w-8 h-8 border-4 border-blue-600 border-t-transparent rounded-full" />
+    </div>
+  )
+
   return (
     <div className="p-6 space-y-5" style={{ maxWidth: 1280 }}>
       <div className="flex items-center justify-between">
@@ -131,7 +169,7 @@ export default function Projects() {
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
-            onClick={() => setShowAddProj(true)}
+            onClick={openAddProj}
             style={{ background: '#fff', color: '#2563EB', border: '1px solid #BFDBFE', borderRadius: 6, padding: '9px 16px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}
           >
             <Plus size={14} /> פרויקט חדש
@@ -147,8 +185,8 @@ export default function Projects() {
         </div>
       </div>
 
-      {/* Add project modal */}
-      <Modal open={showAddProj} onClose={() => setShowAddProj(false)} title="פרויקט חדש" subtitle="הוספה ידנית ל-CRM (דרגת מקור 5 — לא מאומת)" width={520}>
+      {/* Add / edit project modal */}
+      <Modal open={showAddProj} onClose={closeProjModal} title={editId ? 'עריכת פרויקט' : 'פרויקט חדש'} subtitle={editId ? 'עדכון פרטי הפרויקט' : 'הוספה ידנית ל-CRM (דרגת מקור 5 — לא מאומת)'} width={520}>
         <form onSubmit={submitProject} className="space-y-3">
           <div className="grid grid-cols-2 gap-3">
             <FormRow label="שם הפרויקט"><TextInput value={pf.project_name} onChange={e => setPf(f => ({ ...f, project_name: e.target.value }))} required /></FormRow>
@@ -175,7 +213,7 @@ export default function Projects() {
             <input type="checkbox" checked={pf.urban_renewal} onChange={e => setPf(f => ({ ...f, urban_renewal: e.target.checked }))} />
             התחדשות עירונית (תמ״א 38 / פינוי-בינוי)
           </label>
-          <SubmitButton>הוסף פרויקט</SubmitButton>
+          <SubmitButton>{editId ? 'שמור שינויים' : 'הוסף פרויקט'}</SubmitButton>
         </form>
       </Modal>
 
@@ -277,7 +315,10 @@ export default function Projects() {
                 <h3 className="text-sm font-semibold leading-tight" style={{ color: '#0F172A' }}>{p.project_name}</h3>
                 <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>{p.developer}</p>
               </div>
-              <span className={`status-badge ${STATUS_BADGE[p.status]}`}>{STATUS_HE[p.status]}</span>
+              <div className="flex items-center gap-1.5">
+                <button onClick={() => openEditProj(p)} title="עריכה" className="text-slate-300 hover:text-blue-600 transition"><Pencil size={13} /></button>
+                <span className={`status-badge ${STATUS_BADGE[p.status]}`}>{STATUS_HE[p.status]}</span>
+              </div>
             </div>
             <p className="text-xs flex items-center gap-1 mb-3" style={{ color: '#64748B' }}>
               <MapPin size={11} /> {p.neighborhood}, {p.city}

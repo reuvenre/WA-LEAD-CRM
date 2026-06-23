@@ -1,5 +1,21 @@
 import type { Lead, Message, Template, Project, LeadsResponse, AnalyticsOverview } from '@/types';
 
+// ─── Real-estate DB row shapes (camelCase from the backend) ───────────────────
+export interface DealRow { id: string; projectName: string; blockParcel: string | null; city: string | null; status: string; gdv: number; expectedMargin: number; riskAlert: boolean }
+export interface PropertyRow { id: string; title: string; addressCity: string | null; priceRequested: number; status: string; exclusivityEndDate: string | null }
+export interface REProjectRow {
+  id: string; projectName: string; developer: string | null; city: string | null; neighborhood: string | null; address: string | null;
+  status: string; expectedDelivery: string | null; deliveryEarliest: string | null; deliveryLatest: string | null;
+  totalUnits: number; availableUnits: number | null; unitTypes: number[]; priceMin: number | null; priceMax: number | null;
+  amenities: string[]; urbanRenewal: boolean; urbanRenewalType: string | null; salesOffice: string | null; source: string; sourceTier: number;
+}
+export interface ListingRow {
+  id: string; title: string; type: string; city: string | null; neighborhood: string | null; street: string | null;
+  rooms: number; floor: number; sizeSqm: number; price: number; parking: boolean; elevator: boolean; balcony: boolean;
+  renovated: boolean; entry: string; status: string; agent: string | null; source: string; sourceUrl: string | null;
+}
+export interface REClientRow { id: string; name: string; phone: string | null; city: string | null; rooms: number; budgetMax: number; deliveryBy: string | null }
+
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 function getToken(): string {
@@ -89,6 +105,38 @@ export const api = {
     delete: (id: string) => request<void>(`/api/projects/${id}`, { method: 'DELETE' }),
   },
 
+  realestate: {
+    deals: {
+      list: () => request<DealRow[]>('/api/realestate/deals'),
+      create: (data: Partial<DealRow>) => request<DealRow>('/api/realestate/deals', { method: 'POST', body: JSON.stringify(data) }),
+      update: (id: string, data: Partial<DealRow>) => request<DealRow>(`/api/realestate/deals/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+      remove: (id: string) => request<void>(`/api/realestate/deals/${id}`, { method: 'DELETE' }),
+    },
+    properties: {
+      list: () => request<PropertyRow[]>('/api/realestate/properties'),
+      create: (data: Partial<PropertyRow>) => request<PropertyRow>('/api/realestate/properties', { method: 'POST', body: JSON.stringify(data) }),
+      update: (id: string, data: Partial<PropertyRow>) => request<PropertyRow>(`/api/realestate/properties/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+      remove: (id: string) => request<void>(`/api/realestate/properties/${id}`, { method: 'DELETE' }),
+    },
+    projects: {
+      list: () => request<REProjectRow[]>('/api/realestate/projects'),
+      create: (data: Partial<REProjectRow>) => request<REProjectRow>('/api/realestate/projects', { method: 'POST', body: JSON.stringify(data) }),
+      update: (id: string, data: Partial<REProjectRow>) => request<REProjectRow>(`/api/realestate/projects/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+      remove: (id: string) => request<void>(`/api/realestate/projects/${id}`, { method: 'DELETE' }),
+    },
+    listings: {
+      list: () => request<ListingRow[]>('/api/realestate/listings'),
+      create: (data: Partial<ListingRow>) => request<ListingRow>('/api/realestate/listings', { method: 'POST', body: JSON.stringify(data) }),
+      update: (id: string, data: Partial<ListingRow>) => request<ListingRow>(`/api/realestate/listings/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+      remove: (id: string) => request<void>(`/api/realestate/listings/${id}`, { method: 'DELETE' }),
+    },
+    clients: {
+      list: () => request<REClientRow[]>('/api/realestate/clients'),
+      create: (data: Partial<REClientRow>) => request<REClientRow>('/api/realestate/clients', { method: 'POST', body: JSON.stringify(data) }),
+      remove: (id: string) => request<void>(`/api/realestate/clients/${id}`, { method: 'DELETE' }),
+    },
+  },
+
   tenant: {
     settings: () => request<{
       id: string; name: string; email: string; plan: string;
@@ -104,6 +152,8 @@ export const api = {
       request('/api/tenant/users', { method: 'POST', body: JSON.stringify(data) }),
     updateUser: (id: string, data: { active?: boolean; role?: string }) =>
       request(`/api/tenant/users/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    deleteUser: (id: string) =>
+      request<void>(`/api/tenant/users/${id}`, { method: 'DELETE' }),
     updateProfile: (data: { name: string; email: string }) =>
       request('/api/tenant/profile', { method: 'PATCH', body: JSON.stringify(data) }),
   },

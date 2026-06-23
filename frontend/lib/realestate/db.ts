@@ -1,4 +1,6 @@
 import type { FeasibilityResult, ScanResult } from './types'
+import { api } from '@/lib/api'
+import type { DealRow, PropertyRow } from '@/lib/api'
 
 // ---------------------------------------------------------------------------
 // Built-in data store. Returns records in the exact Airtable field shapes used
@@ -86,10 +88,35 @@ const sleep = (ms: number) => new Promise(r => setTimeout(r, ms))
 const scoped = (rows: any[], rec?: string) =>
   !rec ? [...rows] : rows.filter(r => (r['Agent Assigned'] || []).includes(rec))
 
-// ---- Data API (Airtable-shaped) -------------------------------------------
+// ---- Data API — backed by the CRM backend (tenant-scoped) -----------------
+// Records are returned in the Airtable-shaped form the UI components expect.
+const mapDeal = (d: DealRow) => ({
+  id: d.id,
+  'Project Name': d.projectName,
+  'Block & Parcel': d.blockParcel || '',
+  'Status': d.status,
+  'Estimated Sales Value GDV': d.gdv,
+  'Expected Margin %': d.expectedMargin,
+  'Risk Alert': d.riskAlert,
+})
+const mapProp = (p: PropertyRow) => ({
+  id: p.id,
+  'Property Title': p.title,
+  'Address & City': p.addressCity || '',
+  'Price Requested': p.priceRequested,
+  'Status': p.status,
+  'Exclusivity End Date': p.exclusivityEndDate || '',
+})
+
 export async function getAgents() { await sleep(250); return [...AGENTS] }
-export async function getDeals(rec?: string) { await sleep(300); return scoped(DEALS, rec) }
-export async function getProperties(rec?: string) { await sleep(300); return scoped(PROPERTIES, rec) }
+export async function getDeals(_rec?: string) {
+  const rows = await api.realestate.deals.list()
+  return rows.map(mapDeal)
+}
+export async function getProperties(_rec?: string) {
+  const rows = await api.realestate.properties.list()
+  return rows.map(mapProp)
+}
 export async function getExpiringProperties() {
   await sleep(200)
   return PROPERTIES.filter(p => {
@@ -111,36 +138,39 @@ export async function getDailyMessageCount() {
   return WHATSAPP.filter(m => m['Direction'] === 'Outbound' && (m['Timestamp'] || '').startsWith(today)).length + DAILY_BASELINE
 }
 
-// ---- Mutations (manual create) --------------------------------------------
-let dealSeq = DEALS.length
-export async function addDeal(fields: Record<string, any>, agentRecordId?: string) {
-  await sleep(200)
-  const rec = {
-    id: 'd' + (++dealSeq) + '_' + Math.round(performance.now()),
-    'Risk Alert': false,
-    'Agent Assigned': agentRecordId ? [agentRecordId] : [],
-    ...fields,
-  }
-  DEALS.unshift(rec)
-  return rec
+// ---- Mutations (persisted via the backend) --------------------------------
+export async function addDeal(fields: Record<string, any>, _agentRecordId?: string) {
+  const created = await api.realestate.deals.create({
+    projectName: fields['Project Name'],
+    blockParcel: fields['Block & Parcel'] || null,
+    status: fields['Status'],
+    gdv: fields['Estimated Sales Value GDV'] || 0,
+    expectedMargin: fields['Expected Margin %'] || 0,
+    riskAlert: !!fields['Risk Alert'],
+  })
+  return mapDeal(created)
 }
 
-let propSeq = PROPERTIES.length
-export async function addProperty(fields: Record<string, any>, agentRecordId?: string) {
-  await sleep(200)
-  const rec = {
-    id: 'p' + (++propSeq) + '_' + Math.round(performance.now()),
-    'Agent Assigned': agentRecordId ? [agentRecordId] : [],
-    ...fields,
-  }
-  PROPERTIES.unshift(rec)
-  return rec
+export async function addProperty(fields: Record<string, any>, _agentRecordId?: string) {
+  const created = await api.realestate.properties.create({
+    title: fields['Property Title'],
+    addressCity: fields['Address & City'] || null,
+    priceRequested: fields['Price Requested'] || 0,
+    status: fields['Status'],
+    exclusivityEndDate: fields['Exclusivity End Date'] || null,
+  })
+  return mapProp(created)
 }
 
-export async function updateDealStatus(id: string, status: string) {
-  const d = DEALS.find(x => x.id === id)
-  if (d) (d as any)['Status'] = status
-  return d
+export async function updateProperty(id: string, fields: Record<string, any>) {
+  const updated = await api.realestate.properties.update(id, {
+    title: fields['Property Title'],
+    addressCity: fields['Address & City'] || null,
+    priceRequested: fields['Price Requested'] || 0,
+    status: fields['Status'],
+    exclusivityEndDate: fields['Exclusivity End Date'] || null,
+  })
+  return mapProp(updated)
 }
 
 // ---- Meetings (calendar; syncs to Google Calendar in production) ----------

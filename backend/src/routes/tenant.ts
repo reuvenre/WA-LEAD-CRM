@@ -145,3 +145,25 @@ tenantRouter.patch('/users/:id', async (req: Request, res: Response) => {
 
   return res.json(updated);
 });
+
+// DELETE /api/tenant/users/:id — remove an agent from this tenant (admin only)
+tenantRouter.delete('/users/:id', async (req: Request, res: Response) => {
+  if (req.user!.role !== 'ADMIN' && req.user!.role !== 'SUPER_ADMIN') {
+    return res.status(403).json({ error: 'רק מנהל יכול להסיר משתמשים' });
+  }
+  if (req.params.id === req.user!.userId) {
+    return res.status(400).json({ error: 'לא ניתן להסיר את עצמך' });
+  }
+
+  const user = await prisma.user.findFirst({
+    where: { id: req.params.id, tenantId: req.user!.tenantId },
+  });
+  if (!user) return res.status(404).json({ error: 'משתמש לא נמצא' });
+  // A tenant admin cannot remove a platform super-admin.
+  if (user.role === 'SUPER_ADMIN') {
+    return res.status(403).json({ error: 'לא ניתן להסיר מנהל-על' });
+  }
+
+  await prisma.user.delete({ where: { id: req.params.id } });
+  return res.status(204).send();
+});
