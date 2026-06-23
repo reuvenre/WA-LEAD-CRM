@@ -31,9 +31,17 @@ messagesRouter.post('/send', async (req: Request, res: Response) => {
     const lead = await prisma.lead.findFirst({ where: { id: leadId, tenantId } });
     if (!lead) return res.status(404).json({ error: 'Lead not found' });
 
+    // Green API requires a digits-only number (chatId = <phone>@c.us). Reject leads
+    // without a valid phone here so the user gets a clear message instead of an opaque
+    // Green API validation error.
+    const phone = (lead.phone ?? '').replace(/\D/g, '');
+    if (!phone) {
+      return res.status(400).json({ error: 'לליד אין מספר טלפון תקין — לא ניתן לשלוח הודעה' });
+    }
+
     // Get tenant's Green API credentials
     const tenant = await prisma.tenant.findUnique({ where: { id: tenantId } });
-    const result = await sendGreenAPIMessage(lead.phone, content, type, tenant?.greenApiInstanceId, tenant?.greenApiToken);
+    const result = await sendGreenAPIMessage(phone, content, type, tenant?.greenApiInstanceId, tenant?.greenApiToken);
 
     // Don't record a failed send as a delivered message — surface the failure so the UI can retry.
     if (!result.success) {

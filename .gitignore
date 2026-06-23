@@ -22,3 +22,9 @@ npm-debug.log*
 # OS
 .DS_Store
 Thumbs.db
+
+# IDE / local agent caches (per-machine, not for the repo)
+.claude/
+.agents/
+.vscode/
+*.tsbuildinfo
