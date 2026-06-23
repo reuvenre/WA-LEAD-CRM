@@ -9,7 +9,7 @@ import { Dashboard, usePrefetchDashboard } from '@/components/Dashboard';
 import { useSocket } from '@/hooks/useSocket';
 import { api } from '@/lib/api';
 import type { Lead, Message } from '@/types';
-import { MessageSquare, LayoutGrid, BarChart2, LogOut, Settings, FolderKanban, Calendar, Shield } from 'lucide-react';
+import { MessageSquare, LayoutGrid, BarChart2, LogOut, Settings, FolderKanban, Calendar, Shield, Building2, Home, Building, KeyRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { AddLeadModal } from '@/components/AddLeadModal';
 import { SettingsModal } from '@/components/SettingsModal';
@@ -20,7 +20,13 @@ import { decodeToken } from '@/lib/auth';
 import { ProjectsView } from '@/components/ProjectsView';
 import { CalendarView } from '@/components/CalendarView';
 
-type ViewMode = 'chat' | 'kanban' | 'dashboard' | 'projects' | 'calendar';
+// Real-estate domain modules (ported from the Real Estate Suite)
+import DealFlow from '@/components/realestate/DealFlow';
+import Properties from '@/components/realestate/Properties';
+import ProjectsRE from '@/components/realestate/ProjectsRE';
+import Listings from '@/components/realestate/Listings';
+
+type ViewMode = 'chat' | 'kanban' | 'dashboard' | 'projects' | 'calendar' | 'deals' | 'properties' | 're_projects' | 'listings';
 
 export default function CRMPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -91,7 +97,11 @@ export default function CRMPage() {
   // ─── Handlers ────────────────────────────────────────────────────────────────
   const handleSendMessage = async (content: string) => {
     if (!selectedLeadId) return;
-    await api.messages.send(selectedLeadId, content);
+    try {
+      await api.messages.send(selectedLeadId, content);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'שליחת ההודעה נכשלה');
+    }
   };
 
   const handleLeadUpdate = async (
@@ -132,7 +142,7 @@ export default function CRMPage() {
       {viewMode !== 'projects' && viewMode !== 'calendar' && (
         <aside className="w-80 flex-shrink-0 flex flex-col border-l border-surface-border bg-white shadow-soft">
           {/* View switcher */}
-          <div className="flex border-b border-surface-border px-2 pt-2 gap-1">
+          <div className="flex flex-wrap border-b border-surface-border px-2 pt-2 gap-1">
             <ViewTab
               active={viewMode === 'chat'}
               onClick={() => setViewMode('chat')}
@@ -162,6 +172,33 @@ export default function CRMPage() {
               onClick={() => setViewMode('dashboard')}
               icon={<BarChart2 className="w-3.5 h-3.5" />}
               label="דשבורד"
+            />
+
+            {/* ── נדל״ן (Real Estate) — second row ── */}
+            <div className="basis-full h-px bg-surface-border my-1" />
+            <ViewTab
+              active={viewMode === 'deals'}
+              onClick={() => setViewMode('deals')}
+              icon={<Building2 className="w-3.5 h-3.5" />}
+              label="עסקאות"
+            />
+            <ViewTab
+              active={viewMode === 'properties'}
+              onClick={() => setViewMode('properties')}
+              icon={<Home className="w-3.5 h-3.5" />}
+              label="נכסים"
+            />
+            <ViewTab
+              active={viewMode === 're_projects'}
+              onClick={() => setViewMode('re_projects')}
+              icon={<Building className="w-3.5 h-3.5" />}
+              label="בנייה"
+            />
+            <ViewTab
+              active={viewMode === 'listings'}
+              onClick={() => setViewMode('listings')}
+              icon={<KeyRound className="w-3.5 h-3.5" />}
+              label="דירות"
             />
           </div>
 
@@ -206,7 +243,15 @@ export default function CRMPage() {
 
       {/* ── Main area ── */}
       <main className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {viewMode === 'dashboard' ? (
+        {viewMode === 'deals' ? (
+          <div className="flex-1 overflow-y-auto bg-surface-muted"><DealFlow /></div>
+        ) : viewMode === 'properties' ? (
+          <div className="flex-1 overflow-y-auto bg-surface-muted"><Properties /></div>
+        ) : viewMode === 're_projects' ? (
+          <div className="flex-1 overflow-y-auto bg-surface-muted"><ProjectsRE /></div>
+        ) : viewMode === 'listings' ? (
+          <div className="flex-1 overflow-y-auto bg-surface-muted"><Listings /></div>
+        ) : viewMode === 'dashboard' ? (
           <Dashboard onClose={() => setViewMode('chat')} prefetchedData={prefetchedDashboard} />
         ) : viewMode === 'calendar' ? (
           <CalendarView onLeadClick={(id) => { setSelectedLeadId(id); setViewMode('chat'); }} onNavigate={(view) => setViewMode(view as ViewMode)} />

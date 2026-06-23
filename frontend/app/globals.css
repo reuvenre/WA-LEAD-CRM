@@ -73,3 +73,36 @@ main {
 .status-badge {
   @apply inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium;
 }
+
+/* ── Real-estate module styles (ported from Real Estate Suite) ───────────── */
+.kpi-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 18px;
+}
+.data-card {
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.fade-in {
+  animation: reFadeIn 0.2s ease;
+}
+@keyframes reFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+input[type='range'] { accent-color: #2563eb; }
+.filter-select {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  font-family: inherit;
+  background: #fff;
+  color: #0f172a;
+  outline: none;
+  cursor: pointer;
+}
+.filter-select:focus { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15); }
