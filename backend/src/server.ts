@@ -102,9 +102,13 @@ io.on('connection', (socket) => {
 
 initSocket(io);
 
-const PORT = process.env.PORT || 3001;
-httpServer.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
+const PORT = Number(process.env.PORT) || 3001;
+// Bind to :: (IPv6, dual-stack — also accepts IPv4). Railway's V2 runtime reaches
+// the container over an IPv6 private network, so an IPv4-only bind makes the app
+// unreachable from the edge proxy and every request returns 502 even while the
+// container is healthy/ONLINE.
+httpServer.listen(PORT, '::', () => {
+  console.log(`🚀 Server running on port ${PORT} (bound to :: / dual-stack)`);
   console.log(`🔌 Socket.io with tenant rooms enabled`);
 });
 
