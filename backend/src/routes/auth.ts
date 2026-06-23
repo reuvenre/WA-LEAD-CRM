@@ -220,8 +220,8 @@ authRouter.post('/forgot-password', async (req: Request, res: Response) => {
     // Find tenant by email
     const tenant = await prisma.tenant.findFirst({ where: { email: email.trim().toLowerCase() } });
     if (tenant) {
-      // Find admin user of this tenant
-      const user = await prisma.user.findFirst({ where: { tenantId: tenant.id, role: 'ADMIN', active: true } });
+      // Find admin user of this tenant (ADMIN or SUPER_ADMIN)
+      const user = await prisma.user.findFirst({ where: { tenantId: tenant.id, role: { in: ['ADMIN', 'SUPER_ADMIN'] }, active: true } });
       if (user) {
         // Invalidate any prior unused reset tokens so only the newest link works.
         await prisma.passwordResetToken.updateMany({
