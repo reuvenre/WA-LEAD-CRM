@@ -22,7 +22,8 @@ ENV NODE_ENV=production
 ENV CHECKPOINT_DISABLE=1
 ENV PRISMA_HIDE_UPDATE_MESSAGE=1
 
-# Apply pending migrations, then start the server (uses Railway's $PORT).
-# Use `;` (not `&&`) before the server so a migration hiccup can never stop the
-# HTTP server from coming up; echo markers make the boot sequence visible in logs.
-CMD ["sh", "-c", "echo '== migrate ==' && npx prisma migrate deploy; echo '== starting server ==' && node dist/server.js"]
+# Start the HTTP server directly. Migrations are NOT run here: `npx prisma
+# migrate deploy` hangs on Railway's restricted egress (npx package resolution),
+# which blocked the server from ever starting. Run migrations separately via
+# Railway's "Pre-deploy Command" or manually when the schema changes.
+CMD ["node", "dist/server.js"]
