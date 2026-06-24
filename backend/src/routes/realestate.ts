@@ -414,10 +414,20 @@ realestateRouter.post('/listings/search', async (req, res) => {
     });
     await prisma.listing.createMany({ data });
 
-    // Diagnostics (safe, ASCII) so we can tell live-vs-estimated from outside.
-    res.setHeader('X-Apify-Configured', process.env.APIFY_API_TOKEN ? '1' : '0');
+    // Diagnostics (safe, ASCII; no secret exposed) so we can pinpoint failures.
+    const tk = process.env.APIFY_API_TOKEN || '';
+    res.setHeader('X-Apify-Configured', tk ? '1' : '0');
     res.setHeader('X-Listings-Source', usedReal ? 'live' : 'estimated');
+    res.setHeader('X-Apify-Token-Len', String(tk.length));
+    res.setHeader('X-Apify-Token-Clean', /^apify_api_[A-Za-z0-9]+$/.test(tk) ? '1' : '0');
     if (apifyError) res.setHeader('X-Apify-Error', apifyError.slice(0, 180).replace(/[^\x20-\x7E]/g, ''));
+    if (apifyError && tk) {
+      // Isolate token-validity from actor-access: hit a token-only endpoint.
+      try {
+        const me = await fetch(`https://api.apify.com/v2/users/me?token=${encodeURIComponent(tk)}`);
+        res.setHeader('X-Apify-Authcheck', String(me.status));
+      } catch { res.setHeader('X-Apify-Authcheck', 'err'); }
+    }
 
     const listings = await prisma.listing.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' } });
     return res.json(listings);
