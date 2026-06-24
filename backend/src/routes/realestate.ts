@@ -309,6 +309,78 @@ function buildListings(tenantId: string, city: string, rooms: number | null, typ
   return items;
 }
 
+// ─── Real Yad2 data via Apify (paid provider) ─────────────────────────────────
+// When APIFY_API_TOKEN is set we pull REAL Yad2 listings — real prices and a
+// direct link to each ad — through the `swerve/yad2-scraper` actor, which handles
+// Yad2's bot protection. Returns null when no token is configured so the caller
+// falls back to the local estimator (no breakage out of the box).
+const APIFY_ACTOR = process.env.APIFY_YAD2_ACTOR || 'swerve~yad2-scraper';
+
+interface ApifyYad2Item {
+  url?: string; cityHebrew?: string; city?: string; neighbourhood?: string;
+  address?: string; streetName?: string; price?: number; rooms?: number;
+  floor?: number; areaSqm?: number; hasParking?: boolean; hasElevator?: boolean;
+  hasBalcony?: boolean; hasAgent?: boolean; contactName?: string;
+}
+
+async function fetchYad2ViaApify(
+  tenantId: string, city: string, rooms: number | null, type: string | null,
+  maxPrice: number | null, count: number,
+) {
+  const token = process.env.APIFY_API_TOKEN;
+  if (!token) return null; // not configured → caller falls back to the estimator
+
+  const input: Record<string, unknown> = {
+    city, dealType: 'buy', maxItems: count, enrichListings: false,
+  };
+  if (rooms) { input.minRooms = rooms; input.maxRooms = rooms; }
+  if (maxPrice) input.maxPrice = maxPrice;
+
+  const endpoint =
+    `https://api.apify.com/v2/acts/${APIFY_ACTOR}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 150_000);
+  let items: ApifyYad2Item[];
+  try {
+    const r = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input),
+      signal: controller.signal,
+    });
+    if (!r.ok) throw new Error(`Apify HTTP ${r.status}`);
+    items = (await r.json()) as ApifyYad2Item[];
+  } finally {
+    clearTimeout(timer);
+  }
+
+  const t = type && type !== 'הכל' ? type : 'דירה';
+  return items
+    .filter((it) => it && it.url && (it.price ?? 0) > 0)
+    .slice(0, count)
+    .map((it) => ({
+      tenantId,
+      title: `${t} ${it.rooms ?? rooms ?? ''} חד׳ ב${it.cityHebrew || city}`.replace(/\s+/g, ' ').trim(),
+      type: t,
+      city: it.cityHebrew || city,
+      neighborhood: it.neighbourhood || null,
+      street: it.streetName || it.address || null,
+      rooms: Math.round(it.rooms ?? rooms ?? 0),
+      floor: Math.round(it.floor ?? 0),
+      sizeSqm: Math.round(it.areaSqm ?? 0),
+      price: Math.round(it.price ?? 0),
+      parking: Boolean(it.hasParking),
+      elevator: Boolean(it.hasElevator),
+      balcony: Boolean(it.hasBalcony),
+      renovated: false,
+      entry: 'גמיש',
+      status: 'פעיל',
+      agent: it.hasAgent ? (it.contactName || 'תיווך') : null,
+      source: 'Yad2',
+      sourceUrl: it.url as string, // direct link to the specific ad
+    }));
+}
+
 realestateRouter.post('/listings/search', async (req, res) => {
   try {
     const tenantId = tid(req);
@@ -322,11 +394,22 @@ realestateRouter.post('/listings/search', async (req, res) => {
       return res.status(400).json({ error: 'בחר עיר ספציפית כדי למשוך דירות מהמקורות' });
     }
 
+    // Prefer REAL data from Apify; fall back to the local estimator on any failure.
+    let realData: Awaited<ReturnType<typeof fetchYad2ViaApify>> = null;
+    try {
+      realData = await fetchYad2ViaApify(tenantId, city, rooms, type, maxPrice, count);
+    } catch (e) {
+      console.error('Apify Yad2 fetch failed, using estimator:', (e as Error).message);
+    }
+    const data = realData && realData.length
+      ? realData
+      : buildListings(tenantId, city, rooms, type, maxPrice, count);
+
     // Refresh the pulled set for this city; keep manually-added listings.
     await prisma.listing.deleteMany({
-      where: { tenantId, city, source: { in: ['Yad2', 'Madlan'] } },
+      where: { tenantId, city, source: { not: 'CRM (ידני)' } },
     });
-    await prisma.listing.createMany({ data: buildListings(tenantId, city, rooms, type, maxPrice, count) });
+    await prisma.listing.createMany({ data });
 
     const listings = await prisma.listing.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' } });
     return res.json(listings);
