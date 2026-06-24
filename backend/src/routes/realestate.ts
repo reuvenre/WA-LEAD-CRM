@@ -391,7 +391,10 @@ async function fetchYad2ViaApify(
       body: JSON.stringify(input),
       signal: controller.signal,
     });
-    if (!r.ok) throw new Error(`Apify HTTP ${r.status}`);
+    if (!r.ok) {
+      const body = await r.text().catch(() => '');
+      throw new Error(`Apify HTTP ${r.status}: ${body.replace(/\s+/g, ' ').slice(0, 140)}`);
+    }
     items = (await r.json()) as ApifyYad2Item[];
   } finally {
     clearTimeout(timer);
