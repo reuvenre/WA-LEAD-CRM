@@ -396,13 +396,16 @@ realestateRouter.post('/listings/search', async (req, res) => {
 
     // Prefer REAL data from Apify; fall back to the local estimator on any failure.
     let realData: Awaited<ReturnType<typeof fetchYad2ViaApify>> = null;
+    let apifyError = '';
     try {
       realData = await fetchYad2ViaApify(tenantId, city, rooms, type, maxPrice, count);
     } catch (e) {
-      console.error('Apify Yad2 fetch failed, using estimator:', (e as Error).message);
+      apifyError = (e as Error).message || 'unknown';
+      console.error('Apify Yad2 fetch failed, using estimator:', apifyError);
     }
-    const data = realData && realData.length
-      ? realData
+    const usedReal = Boolean(realData && realData.length);
+    const data = usedReal
+      ? realData!
       : buildListings(tenantId, city, rooms, type, maxPrice, count);
 
     // Refresh the pulled set for this city; keep manually-added listings.
@@ -410,6 +413,11 @@ realestateRouter.post('/listings/search', async (req, res) => {
       where: { tenantId, city, source: { not: 'CRM (ידני)' } },
     });
     await prisma.listing.createMany({ data });
+
+    // Diagnostics (safe, ASCII) so we can tell live-vs-estimated from outside.
+    res.setHeader('X-Apify-Configured', process.env.APIFY_API_TOKEN ? '1' : '0');
+    res.setHeader('X-Listings-Source', usedReal ? 'live' : 'estimated');
+    if (apifyError) res.setHeader('X-Apify-Error', apifyError.slice(0, 180).replace(/[^\x20-\x7E]/g, ''));
 
     const listings = await prisma.listing.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' } });
     return res.json(listings);
