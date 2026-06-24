@@ -379,8 +379,10 @@ async function fetchYad2ViaApify(
   if (rooms) { input.minRooms = rooms; input.maxRooms = rooms; }
   if (maxPrice) input.maxPrice = maxPrice;
 
+  // maxItems MUST be a query param too — it is the run-level "max charged results"
+  // cap for this pay-per-result actor; omitting it returns HTTP 400.
   const endpoint =
-    `https://api.apify.com/v2/acts/${APIFY_ACTOR}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}`;
+    `https://api.apify.com/v2/acts/${APIFY_ACTOR}/run-sync-get-dataset-items?token=${encodeURIComponent(token)}&maxItems=${count}`;
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), 150_000);
   let items: ApifyYad2Item[];
