@@ -5,7 +5,7 @@
     "dockerfilePath": "Dockerfile"
   },
   "deploy": {
-    "startCommand": "npx prisma migrate deploy && npm run start",
+    "startCommand": "echo '== migrate ==' && npx prisma migrate deploy; echo '== starting server ==' && node dist/server.js",
     "restartPolicyType": "ON_FAILURE"
   }
 }

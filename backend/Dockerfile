@@ -16,5 +16,13 @@ RUN npm run db:generate && npm run build
 
 ENV NODE_ENV=production
 
-# Apply pending migrations, then start the server (uses Railway's $PORT)
-CMD ["sh", "-c", "npx prisma migrate deploy && npm run start"]
+# Stop the Prisma CLI from making update-check / telemetry network calls. On
+# Railway's restricted egress these can hang the `migrate deploy` step after it
+# prints "No pending migrations", which blocks the server from ever starting.
+ENV CHECKPOINT_DISABLE=1
+ENV PRISMA_HIDE_UPDATE_MESSAGE=1
+
+# Apply pending migrations, then start the server (uses Railway's $PORT).
+# Use `;` (not `&&`) before the server so a migration hiccup can never stop the
+# HTTP server from coming up; echo markers make the boot sequence visible in logs.
+CMD ["sh", "-c", "echo '== migrate ==' && npx prisma migrate deploy; echo '== starting server ==' && node dist/server.js"]
