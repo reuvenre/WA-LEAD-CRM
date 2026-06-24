@@ -11,8 +11,8 @@ export interface REProjectRow {
 }
 export interface ListingRow {
   id: string; title: string; type: string; city: string | null; neighborhood: string | null; street: string | null;
-  rooms: number; floor: number; sizeSqm: number; price: number; parking: boolean; elevator: boolean; balcony: boolean;
-  renovated: boolean; entry: string; status: string; agent: string | null; source: string; sourceUrl: string | null;
+  rooms: number; floor: number; totalFloors: number; sizeSqm: number; price: number; parking: boolean; elevator: boolean; balcony: boolean;
+  renovated: boolean; entry: string; status: string; agent: string | null; listedBy: string; source: string; sourceUrl: string | null;
 }
 export interface REClientRow { id: string; name: string; phone: string | null; city: string | null; rooms: number; budgetMax: number; deliveryBy: string | null }
 

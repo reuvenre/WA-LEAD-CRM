@@ -211,11 +211,13 @@ realestateRouter.post('/listings', async (req, res) => {
       data: {
         tenantId: tid(req), title: b.title.trim(), type: b.type || 'דירה',
         city: b.city || null, neighborhood: b.neighborhood || null, street: b.street || null,
-        rooms: Number(b.rooms) || 0, floor: Number(b.floor) || 0, sizeSqm: Number(b.sizeSqm) || 0,
+        rooms: Number(b.rooms) || 0, floor: Number(b.floor) || 0,
+        totalFloors: Number(b.totalFloors) || 0, sizeSqm: Number(b.sizeSqm) || 0,
         price: Number(b.price) || 0,
         parking: !!b.parking, elevator: !!b.elevator, balcony: !!b.balcony, renovated: !!b.renovated,
         entry: b.entry || 'מיידי', status: b.status || 'פעיל',
-        agent: b.agent || null, source: b.source || 'CRM (ידני)', sourceUrl: b.sourceUrl || '',
+        agent: b.agent || null, listedBy: b.listedBy || '',
+        source: b.source || 'CRM (ידני)', sourceUrl: b.sourceUrl || '',
       },
     });
     return res.status(201).json(listing);
@@ -237,6 +239,7 @@ realestateRouter.patch('/listings/:id', async (req, res) => {
         ...(b.street !== undefined && { street: b.street }),
         ...(b.rooms !== undefined && { rooms: Number(b.rooms) || 0 }),
         ...(b.floor !== undefined && { floor: Number(b.floor) || 0 }),
+        ...(b.totalFloors !== undefined && { totalFloors: Number(b.totalFloors) || 0 }),
         ...(b.sizeSqm !== undefined && { sizeSqm: Number(b.sizeSqm) || 0 }),
         ...(b.price !== undefined && { price: Number(b.price) || 0 }),
         ...(b.parking !== undefined && { parking: !!b.parking }),
@@ -246,6 +249,7 @@ realestateRouter.patch('/listings/:id', async (req, res) => {
         ...(b.entry !== undefined && { entry: b.entry }),
         ...(b.status && { status: b.status }),
         ...(b.agent !== undefined && { agent: b.agent }),
+        ...(b.listedBy !== undefined && { listedBy: b.listedBy }),
         ...(b.sourceUrl !== undefined && { sourceUrl: b.sourceUrl }),
       },
     });
@@ -298,11 +302,12 @@ function buildListings(tenantId: string, city: string, rooms: number | null, typ
     items.push({
       tenantId, title: `${t} ${r} חד׳ ב${city}`, type: t, city,
       neighborhood: pick(NEIGH), street: `${pick(STREETS)} ${rnd(1, 180)}`,
-      rooms: r, floor, sizeSqm, price,
+      rooms: r, floor, totalFloors: floor > 0 ? floor + rnd(0, 8) : 0, sizeSqm, price,
       parking: Math.random() > 0.2, elevator: floor > 0 && Math.random() > 0.15,
       balcony: Math.random() > 0.25, renovated: Math.random() > 0.5,
       entry: Math.random() > 0.5 ? 'מיידי' : 'גמיש', status: 'פעיל',
       agent: pick(['תיווך הצפון', 'רימקס', 'אנגלו סכסון', 'כונס נכסים']),
+      listedBy: Math.random() > 0.4 ? 'בתיווך' : 'פרטי',
       source: src, sourceUrl: src === 'Yad2' ? yad2 : madlan,
     });
   }
@@ -319,8 +324,44 @@ const APIFY_ACTOR = process.env.APIFY_YAD2_ACTOR || 'swerve~yad2-scraper';
 interface ApifyYad2Item {
   url?: string; cityHebrew?: string; city?: string; neighbourhood?: string;
   address?: string; streetName?: string; price?: number; rooms?: number;
-  floor?: number; areaSqm?: number; hasParking?: boolean; hasElevator?: boolean;
+  floor?: number | string; areaSqm?: number; hasParking?: boolean; hasElevator?: boolean;
   hasBalcony?: boolean; hasAgent?: boolean; contactName?: string;
+  adType?: string; propertyType?: string | null; listingDescription?: string;
+}
+
+// Yad2's propertyType is frequently null, so fall back to detecting the type from
+// the free-text description, and default to plain "דירה" — NOT the search filter
+// (forcing the filter previously mislabeled a regular apartment as a penthouse).
+const PROPERTY_TYPE_EN: Record<string, string> = {
+  apartment: 'דירה', flat: 'דירה', studio: 'דירה',
+  penthouse: 'פנטהאוז', 'mini penthouse': 'מיני פנטהאוז',
+  duplex: 'דופלקס', 'garden apartment': 'דירת גן', 'garden-apartment': 'דירת גן',
+  cottage: 'בית פרטי', house: 'בית פרטי', 'private house': 'בית פרטי',
+  'roof apartment': 'דירת גג',
+};
+function deriveListingType(propertyType: string | null | undefined, desc: string): string {
+  if (propertyType) {
+    const k = String(propertyType).toLowerCase().trim();
+    if (PROPERTY_TYPE_EN[k]) return PROPERTY_TYPE_EN[k];
+  }
+  const d = desc || '';
+  if (/מיני[\s-]*פנטהאוז/.test(d)) return 'מיני פנטהאוז';
+  if (/פנטהאוז/.test(d)) return 'פנטהאוז';
+  if (/דירת\s*גן/.test(d)) return 'דירת גן';
+  if (/דופלקס/.test(d)) return 'דופלקס';
+  if (/דירת\s*גג|דירה\s*עם\s*גג/.test(d)) return 'דירת גג';
+  if (/בית\s*פרטי|קוטג/.test(d)) return 'בית פרטי';
+  return 'דירה';
+}
+// Total building floors is not a field — it lives in the description: "קומה 4 מתוך 8".
+function parseTotalFloors(desc: string): number {
+  const m = (desc || '').match(/קומה\s*\d+\s*מתוך\s*(\d+)/) || (desc || '').match(/מתוך\s*(\d+)\s*קומות/);
+  return m ? Number(m[1]) : 0;
+}
+function deriveListedBy(adType?: string, hasAgent?: boolean): string {
+  if (adType === 'commercial' || hasAgent === true) return 'בתיווך';
+  if (adType === 'private' || hasAgent === false) return 'פרטי';
+  return '';
 }
 
 async function fetchYad2ViaApify(
@@ -331,7 +372,9 @@ async function fetchYad2ViaApify(
   if (!token) return null; // not configured → caller falls back to the estimator
 
   const input: Record<string, unknown> = {
-    city, dealType: 'buy', maxItems: count, enrichListings: false,
+    // enrichListings:true is required for propertyType / adType / the description
+    // we parse the total floors and real type from.
+    city, dealType: 'buy', maxItems: count, enrichListings: true,
   };
   if (rooms) { input.minRooms = rooms; input.maxRooms = rooms; }
   if (maxPrice) input.maxPrice = maxPrice;
@@ -354,31 +397,36 @@ async function fetchYad2ViaApify(
     clearTimeout(timer);
   }
 
-  const t = type && type !== 'הכל' ? type : 'דירה';
   return items
     .filter((it) => it && it.url && (it.price ?? 0) > 0)
     .slice(0, count)
-    .map((it) => ({
-      tenantId,
-      title: `${t} ${it.rooms ?? rooms ?? ''} חד׳ ב${it.cityHebrew || city}`.replace(/\s+/g, ' ').trim(),
-      type: t,
-      city: it.cityHebrew || city,
-      neighborhood: it.neighbourhood || null,
-      street: it.streetName || it.address || null,
-      rooms: Math.round(it.rooms ?? rooms ?? 0),
-      floor: Math.round(it.floor ?? 0),
-      sizeSqm: Math.round(it.areaSqm ?? 0),
-      price: Math.round(it.price ?? 0),
-      parking: Boolean(it.hasParking),
-      elevator: Boolean(it.hasElevator),
-      balcony: Boolean(it.hasBalcony),
-      renovated: false,
-      entry: 'גמיש',
-      status: 'פעיל',
-      agent: it.hasAgent ? (it.contactName || 'תיווך') : null,
-      source: 'Yad2',
-      sourceUrl: it.url as string, // direct link to the specific ad
-    }));
+    .map((it) => {
+      const desc = it.listingDescription || '';
+      const realType = deriveListingType(it.propertyType, desc);
+      return {
+        tenantId,
+        title: `${realType} ${it.rooms ?? rooms ?? ''} חד׳ ב${it.cityHebrew || city}`.replace(/\s+/g, ' ').trim(),
+        type: realType,
+        city: it.cityHebrew || city,
+        neighborhood: it.neighbourhood || null,
+        street: it.streetName || it.address || null,
+        rooms: Math.round(it.rooms ?? rooms ?? 0),
+        floor: Math.round(Number(it.floor) || 0),
+        totalFloors: parseTotalFloors(desc),
+        sizeSqm: Math.round(it.areaSqm ?? 0),
+        price: Math.round(it.price ?? 0),
+        parking: Boolean(it.hasParking),
+        elevator: Boolean(it.hasElevator),
+        balcony: Boolean(it.hasBalcony),
+        renovated: false,
+        entry: 'גמיש',
+        status: 'פעיל',
+        agent: it.hasAgent ? (it.contactName || 'תיווך') : null,
+        listedBy: deriveListedBy(it.adType, it.hasAgent),
+        source: 'Yad2',
+        sourceUrl: it.url as string, // direct link to the specific ad
+      };
+    });
 }
 
 realestateRouter.post('/listings/search', async (req, res) => {
@@ -392,19 +440,6 @@ realestateRouter.post('/listings/search', async (req, res) => {
 
     if (!city || city === 'הכל') {
       return res.status(400).json({ error: 'בחר עיר ספציפית כדי למשוך דירות מהמקורות' });
-    }
-
-    // TEMP debug: return the raw Apify item so we can see the real field names.
-    if (req.query.debug === 'raw' && process.env.APIFY_API_TOKEN) {
-      const dbgInput: Record<string, unknown> = { city, dealType: 'buy', maxItems: 3, enrichListings: true };
-      if (rooms) { dbgInput.minRooms = rooms; dbgInput.maxRooms = rooms; }
-      const dr = await fetch(
-        `https://api.apify.com/v2/acts/${APIFY_ACTOR}/run-sync-get-dataset-items?token=${encodeURIComponent(process.env.APIFY_API_TOKEN)}`,
-        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dbgInput) },
-      );
-      const dItems = await dr.json();
-      const first = Array.isArray(dItems) ? dItems[0] : dItems;
-      return res.json({ debug: true, status: dr.status, count: Array.isArray(dItems) ? dItems.length : 0, keys: first ? Object.keys(first) : [], sample: first });
     }
 
     // Prefer REAL data from Apify; fall back to the local estimator on any failure.

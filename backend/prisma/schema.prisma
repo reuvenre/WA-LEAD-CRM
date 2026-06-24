@@ -294,6 +294,7 @@ model Listing {
   street       String?
   rooms        Int      @default(0)
   floor        Int      @default(0)
+  totalFloors  Int      @default(0) // total floors in the building ("קומה X מתוך Y")
   sizeSqm      Int      @default(0)
   price        Float    @default(0)
   parking      Boolean  @default(false)
@@ -303,6 +304,7 @@ model Listing {
   entry        String   @default("מיידי")
   status       String   @default("פעיל") // פעיל|בהמתנה|נמכר
   agent        String?
+  listedBy     String   @default("") // פרטי | בתיווך
   source       String   @default("CRM (ידני)")
   sourceUrl    String   @default("") // direct link to the original ad (Yad2/Madlan)
   createdAt    DateTime @default(now())

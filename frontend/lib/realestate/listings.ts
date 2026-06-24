@@ -22,6 +22,7 @@ export interface Listing {
   street: string
   rooms: number
   floor: number
+  total_floors: number   // total floors in the building ("קומה X מתוך Y")
   size_sqm: number
   price: number
   parking: boolean
@@ -31,6 +32,7 @@ export interface Listing {
   entry: string
   status: ListingStatus
   agent: string
+  listed_by: string      // פרטי | בתיווך
   source: 'Yad2' | 'Madlan' | 'CRM (ידני)'
   sourceUrl: string   // direct link to the original ad
 }
@@ -40,17 +42,17 @@ export const LISTINGS: Listing[] = []
 const mapListing = (r: ListingRow): Listing => ({
   id: r.id, title: r.title, type: r.type as ListingType,
   city: r.city || '', neighborhood: r.neighborhood || '', street: r.street || '',
-  rooms: r.rooms, floor: r.floor, size_sqm: r.sizeSqm, price: r.price,
+  rooms: r.rooms, floor: r.floor, total_floors: r.totalFloors ?? 0, size_sqm: r.sizeSqm, price: r.price,
   parking: r.parking, elevator: r.elevator, balcony: r.balcony, renovated: r.renovated,
-  entry: r.entry, status: r.status as ListingStatus, agent: r.agent || '',
+  entry: r.entry, status: r.status as ListingStatus, agent: r.agent || '', listed_by: r.listedBy || '',
   source: r.source as Listing['source'], sourceUrl: (r as any).sourceUrl || '',
 })
 
 const toRow = (l: Partial<Listing>) => ({
   title: l.title, type: l.type, city: l.city, neighborhood: l.neighborhood, street: l.street,
-  rooms: l.rooms, floor: l.floor, sizeSqm: l.size_sqm, price: l.price,
+  rooms: l.rooms, floor: l.floor, totalFloors: l.total_floors, sizeSqm: l.size_sqm, price: l.price,
   parking: l.parking, elevator: l.elevator, balcony: l.balcony, renovated: l.renovated,
-  entry: l.entry, status: l.status, agent: l.agent, source: l.source, sourceUrl: l.sourceUrl,
+  entry: l.entry, status: l.status, agent: l.agent, listedBy: l.listed_by, source: l.source, sourceUrl: l.sourceUrl,
 })
 
 export async function loadListings(): Promise<Listing[]> {

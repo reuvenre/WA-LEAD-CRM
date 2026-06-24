@@ -14,7 +14,8 @@ const CITY_OPTS = ['הכל', ...ISRAELI_CITIES]
 const STATUS_BADGE: Record<string, string> = { 'פעיל': 'bg-green-100 text-green-700', 'בהמתנה': 'bg-yellow-100 text-yellow-700', 'נמכר': 'bg-slate-100 text-slate-500' }
 const SOURCE_BADGE: Record<string, string> = { 'Yad2': 'bg-amber-100 text-amber-700', 'Madlan': 'bg-slate-100 text-slate-600', 'CRM (ידני)': 'bg-blue-100 text-blue-700' }
 
-const NEW_LISTING = { title: '', type: 'דירה' as ListingType, city: '', neighborhood: '', street: '', rooms: '4', floor: '', size_sqm: '', price: '', parking: false, elevator: false, balcony: false, renovated: false, status: 'פעיל' as ListingStatus, sourceUrl: '' }
+const NEW_LISTING = { title: '', type: 'דירה' as ListingType, city: '', neighborhood: '', street: '', rooms: '4', floor: '', total_floors: '', size_sqm: '', price: '', parking: false, elevator: false, balcony: false, renovated: false, status: 'פעיל' as ListingStatus, listed_by: 'פרטי', sourceUrl: '' }
+const LISTED_BY_BADGE: Record<string, string> = { 'פרטי': 'bg-emerald-100 text-emerald-700', 'בתיווך': 'bg-indigo-100 text-indigo-700' }
 const NEW_CLIENT = { name: '', phone: '', city: '', rooms: '4', budgetMax: '', deliveryYear: '2027' }
 
 export default function Listings() {
@@ -47,9 +48,9 @@ export default function Listings() {
     setEditing(l)
     setNl({
       title: l.title, type: l.type, city: l.city, neighborhood: l.neighborhood, street: l.street,
-      rooms: String(l.rooms), floor: String(l.floor), size_sqm: String(l.size_sqm), price: String(l.price),
+      rooms: String(l.rooms), floor: String(l.floor), total_floors: String(l.total_floors || ''), size_sqm: String(l.size_sqm), price: String(l.price),
       parking: l.parking, elevator: l.elevator, balcony: l.balcony, renovated: l.renovated,
-      status: l.status, sourceUrl: l.sourceUrl,
+      status: l.status, listed_by: l.listed_by || 'פרטי', sourceUrl: l.sourceUrl,
     })
     setShowAdd(true)
   }
@@ -82,10 +83,10 @@ export default function Listings() {
     e.preventDefault()
     const payload: Omit<Listing, 'id'> = {
       title: nl.title, type: nl.type, city: nl.city, neighborhood: nl.neighborhood, street: nl.street,
-      rooms: Number(nl.rooms) || 0, floor: Number(nl.floor) || 0, size_sqm: Number(nl.size_sqm) || 0,
+      rooms: Number(nl.rooms) || 0, floor: Number(nl.floor) || 0, total_floors: Number(nl.total_floors) || 0, size_sqm: Number(nl.size_sqm) || 0,
       price: Number(nl.price) || 0, parking: nl.parking, elevator: nl.elevator, balcony: nl.balcony,
       renovated: nl.renovated, entry: editing?.entry || 'מיידי', status: nl.status,
-      agent: editing?.agent || 'משרד', source: editing?.source || 'CRM (ידני)', sourceUrl: nl.sourceUrl,
+      agent: editing?.agent || 'משרד', listed_by: nl.listed_by, source: editing?.source || 'CRM (ידני)', sourceUrl: nl.sourceUrl,
     }
     if (editing) {
       const rec = await updateListing(editing.id, payload)
@@ -197,7 +198,7 @@ export default function Listings() {
             </div>
             <div className="grid grid-cols-3 gap-2 mb-3">
               <Stat label="חדרים" value={l.rooms} />
-              <Stat label="קומה" value={l.floor === 0 ? 'קרקע' : l.floor} />
+              <Stat label="קומה" value={l.floor === 0 ? 'קרקע' : (l.total_floors > 0 ? `${l.floor} מתוך ${l.total_floors}` : l.floor)} />
               <Stat label="מ״ר" value={l.size_sqm} />
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: 5, marginBottom: 10 }}>
@@ -207,8 +208,11 @@ export default function Listings() {
               {l.renovated && <Chip>משופצת</Chip>}
             </div>
             <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <span className={`status-badge ${SOURCE_BADGE[l.source]}`} style={{ fontSize: 9 }}>{l.source}</span>
-              <span className="text-xs" style={{ color: '#CBD5E1' }}>{l.agent} · כניסה {l.entry}</span>
+              <div style={{ display: 'flex', gap: 5, alignItems: 'center' }}>
+                <span className={`status-badge ${SOURCE_BADGE[l.source]}`} style={{ fontSize: 9 }}>{l.source}</span>
+                {l.listed_by && <span className={`status-badge ${LISTED_BY_BADGE[l.listed_by] || 'bg-slate-100 text-slate-600'}`} style={{ fontSize: 9 }}>{l.listed_by}</span>}
+              </div>
+              <span className="text-xs" style={{ color: '#CBD5E1' }}>כניסה {l.entry}</span>
             </div>
           </div>
         ))}
@@ -231,9 +235,11 @@ export default function Listings() {
             <FormRow label="רחוב ומספר"><TextInput value={nl.street} onChange={e => setNl(f => ({ ...f, street: e.target.value }))} /></FormRow>
             <FormRow label="חדרים"><SelectInput value={nl.rooms} onChange={e => setNl(f => ({ ...f, rooms: e.target.value }))}>{[1, 2, 3, 4, 5, 6, 7].map(r => <option key={r} value={r}>{r}</option>)}</SelectInput></FormRow>
             <FormRow label="קומה"><TextInput type="number" value={nl.floor} onChange={e => setNl(f => ({ ...f, floor: e.target.value }))} /></FormRow>
+            <FormRow label="מתוך כמה קומות"><TextInput type="number" value={nl.total_floors} onChange={e => setNl(f => ({ ...f, total_floors: e.target.value }))} placeholder="סך קומות בבניין" /></FormRow>
             <FormRow label="גודל (מ״ר)"><TextInput type="number" value={nl.size_sqm} onChange={e => setNl(f => ({ ...f, size_sqm: e.target.value }))} /></FormRow>
             <FormRow label="מחיר (₪)"><TextInput type="number" value={nl.price} onChange={e => setNl(f => ({ ...f, price: e.target.value }))} required /></FormRow>
             <FormRow label="סטטוס"><SelectInput value={nl.status} onChange={e => setNl(f => ({ ...f, status: e.target.value as ListingStatus }))}>{(['פעיל', 'בהמתנה', 'נמכר'] as ListingStatus[]).map(s => <option key={s} value={s}>{s}</option>)}</SelectInput></FormRow>
+            <FormRow label="פרסום"><SelectInput value={nl.listed_by} onChange={e => setNl(f => ({ ...f, listed_by: e.target.value }))}>{['פרטי', 'בתיווך'].map(s => <option key={s} value={s}>{s}</option>)}</SelectInput></FormRow>
           </div>
           <FormRow label="קישור למודעה המקורית (Yad2 / Madlan)"><TextInput type="url" value={nl.sourceUrl} onChange={e => setNl(f => ({ ...f, sourceUrl: e.target.value }))} placeholder="https://www.yad2.co.il/item/..." /></FormRow>
           <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap', fontSize: 13, color: '#374151' }}>
