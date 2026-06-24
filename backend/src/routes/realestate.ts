@@ -394,6 +394,19 @@ realestateRouter.post('/listings/search', async (req, res) => {
       return res.status(400).json({ error: 'בחר עיר ספציפית כדי למשוך דירות מהמקורות' });
     }
 
+    // TEMP debug: return the raw Apify item so we can see the real field names.
+    if (req.query.debug === 'raw' && process.env.APIFY_API_TOKEN) {
+      const dbgInput: Record<string, unknown> = { city, dealType: 'buy', maxItems: 3, enrichListings: true };
+      if (rooms) { dbgInput.minRooms = rooms; dbgInput.maxRooms = rooms; }
+      const dr = await fetch(
+        `https://api.apify.com/v2/acts/${APIFY_ACTOR}/run-sync-get-dataset-items?token=${encodeURIComponent(process.env.APIFY_API_TOKEN)}`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dbgInput) },
+      );
+      const dItems = await dr.json();
+      const first = Array.isArray(dItems) ? dItems[0] : dItems;
+      return res.json({ debug: true, status: dr.status, count: Array.isArray(dItems) ? dItems.length : 0, keys: first ? Object.keys(first) : [], sample: first });
+    }
+
     // Prefer REAL data from Apify; fall back to the local estimator on any failure.
     let realData: Awaited<ReturnType<typeof fetchYad2ViaApify>> = null;
     let apifyError = '';
