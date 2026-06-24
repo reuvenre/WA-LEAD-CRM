@@ -9,11 +9,11 @@ import { Dashboard, usePrefetchDashboard } from '@/components/Dashboard';
 import { useSocket } from '@/hooks/useSocket';
 import { api } from '@/lib/api';
 import type { Lead, Message } from '@/types';
-import { MessageSquare, LayoutGrid, BarChart2, LogOut, Settings, FolderKanban, Calendar, Shield, Building2, Home, Building, KeyRound, UserPlus } from 'lucide-react';
-import { cn } from '@/lib/utils';
+import { MessageSquare, LayoutGrid, UserPlus } from 'lucide-react';
 import { AddLeadModal } from '@/components/AddLeadModal';
 import { SettingsModal } from '@/components/SettingsModal';
 import { SuperAdminPanel } from '@/components/SuperAdminPanel';
+import { AppSidebar } from '@/components/AppSidebar';
 import { useAuth } from '@/hooks/useAuth';
 import { decodeToken } from '@/lib/auth';
 
@@ -137,71 +137,22 @@ export default function CRMPage() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-surface-muted" dir="rtl">
-      {/* ── Right Sidebar: Lead List (hidden when projects/dashboard fullscreen) ── */}
-      {viewMode !== 'projects' && viewMode !== 'calendar' && (
+    <div className="flex h-screen overflow-hidden bg-[#F4F6FB]" dir="rtl">
+      {/* ── Primary navy sidebar (demo style) ── */}
+      <AppSidebar
+        viewMode={viewMode}
+        onSelect={(v) => setViewMode(v)}
+        userName={currentUser?.username}
+        role={currentUser?.role}
+        isSuperAdmin={currentUser?.role === 'SUPER_ADMIN'}
+        onSettings={() => setShowSettings(true)}
+        onSuperAdmin={() => setShowSuperAdmin(true)}
+        onLogout={logout}
+      />
+
+      {/* ── Lead list — secondary panel, only in chat & pipeline ── */}
+      {(viewMode === 'chat' || viewMode === 'kanban') && (
         <aside className="w-80 flex-shrink-0 flex flex-col border-l border-surface-border bg-white shadow-soft">
-          {/* View switcher */}
-          <div className="flex flex-wrap border-b border-surface-border px-2 pt-2 gap-1">
-            <ViewTab
-              active={viewMode === 'chat'}
-              onClick={() => setViewMode('chat')}
-              icon={<MessageSquare className="w-3.5 h-3.5" />}
-              label="שיחות"
-            />
-            <ViewTab
-              active={viewMode === 'kanban'}
-              onClick={() => setViewMode('kanban')}
-              icon={<LayoutGrid className="w-3.5 h-3.5" />}
-              label="Pipeline"
-            />
-            <ViewTab
-              active={false}
-              onClick={() => setViewMode('projects')}
-              icon={<FolderKanban className="w-3.5 h-3.5" />}
-              label="פרויקטים"
-            />
-            <ViewTab
-              active={false}
-              onClick={() => setViewMode('calendar')}
-              icon={<Calendar className="w-3.5 h-3.5" />}
-              label="יומן"
-            />
-            <ViewTab
-              active={viewMode === 'dashboard'}
-              onClick={() => setViewMode('dashboard')}
-              icon={<BarChart2 className="w-3.5 h-3.5" />}
-              label="דשבורד"
-            />
-
-            {/* ── נדל״ן (Real Estate) — second row ── */}
-            <div className="basis-full h-px bg-surface-border my-1" />
-            <ViewTab
-              active={viewMode === 'deals'}
-              onClick={() => setViewMode('deals')}
-              icon={<Building2 className="w-3.5 h-3.5" />}
-              label="עסקאות"
-            />
-            <ViewTab
-              active={viewMode === 'properties'}
-              onClick={() => setViewMode('properties')}
-              icon={<Home className="w-3.5 h-3.5" />}
-              label="נכסים"
-            />
-            <ViewTab
-              active={viewMode === 're_projects'}
-              onClick={() => setViewMode('re_projects')}
-              icon={<Building className="w-3.5 h-3.5" />}
-              label="בנייה"
-            />
-            <ViewTab
-              active={viewMode === 'listings'}
-              onClick={() => setViewMode('listings')}
-              icon={<KeyRound className="w-3.5 h-3.5" />}
-              label="דירות"
-            />
-          </div>
-
           <LeadList
             leads={leads}
             loading={loadingLeads}
@@ -213,31 +164,6 @@ export default function CRMPage() {
             onSearchChange={setSearch}
             onAddLead={() => setShowAddLead(true)}
           />
-          <div className="border-t border-surface-border p-3 space-y-1">
-            {currentUser?.role === 'SUPER_ADMIN' && (
-              <button
-                onClick={() => setShowSuperAdmin(true)}
-                className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs text-purple-600 hover:bg-purple-50 hover:text-purple-700 transition font-semibold"
-              >
-                <Shield className="w-3.5 h-3.5" />
-                ניהול מערכת
-              </button>
-            )}
-            <button
-              onClick={() => setShowSettings(true)}
-              className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-700 transition"
-            >
-              <Settings className="w-3.5 h-3.5" />
-              הגדרות אבטחה
-            </button>
-            <button
-              onClick={logout}
-              className="w-full flex items-center justify-center gap-2 py-2 rounded-lg text-xs text-slate-500 hover:bg-red-50 hover:text-red-600 transition"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              יציאה מהמערכת
-            </button>
-          </div>
         </aside>
       )}
 
@@ -296,6 +222,7 @@ export default function CRMPage() {
         </aside>
       )}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+      {showSuperAdmin && <SuperAdminPanel onClose={() => setShowSuperAdmin(false)} />}
       {showAddLead && (
         <AddLeadModal
           onClose={() => setShowAddLead(false)}
@@ -334,24 +261,5 @@ function EmptyState({ onAddLead }: { onAddLead?: () => void }) {
         </button>
       )}
     </div>
-  );
-}
-
-function ViewTab({ active, onClick, icon, label }: {
-  active: boolean; onClick: () => void; icon: React.ReactNode; label: string;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={cn(
-        'flex-1 flex items-center justify-center gap-1 py-2 text-xs font-semibold rounded-t-lg transition border-b-2',
-        active
-          ? 'border-brand-600 text-brand-600 bg-brand-50'
-          : 'border-transparent text-slate-400 hover:text-slate-600 hover:bg-surface-subtle'
-      )}
-    >
-      {icon}
-      {label}
-    </button>
   );
 }
