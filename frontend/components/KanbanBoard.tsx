@@ -6,7 +6,7 @@ import { cn, STATUS_CONFIG, PRIORITY_CONFIG, formatTime } from '@/lib/utils';
 import type { Lead, LeadStatus } from '@/types';
 import { api } from '@/lib/api';
 
-const KANBAN_STATUSES: LeadStatus[] = ['NEW', 'IN_PROGRESS', 'HOT', 'CLOSED'];
+const KANBAN_STATUSES: LeadStatus[] = ['NEW', 'IN_PROGRESS', 'HOT', 'CLOSED', 'IRRELEVANT'];
 
 interface KanbanBoardProps {
   leads: Lead[];

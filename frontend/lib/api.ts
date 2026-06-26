@@ -135,6 +135,7 @@ export const api = {
     clients: {
       list: () => request<REClientRow[]>('/api/realestate/clients'),
       create: (data: Partial<REClientRow>) => request<REClientRow>('/api/realestate/clients', { method: 'POST', body: JSON.stringify(data) }),
+      update: (id: string, data: Partial<REClientRow>) => request<REClientRow>(`/api/realestate/clients/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
       remove: (id: string) => request<void>(`/api/realestate/clients/${id}`, { method: 'DELETE' }),
     },
   },

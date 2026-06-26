@@ -157,3 +157,20 @@ export async function addClient(c: Omit<ClientProfile, 'id'>): Promise<ClientPro
   CLIENT_PROFILES.push(mapped)
   return mapped
 }
+
+export async function updateClient(id: string, c: Omit<ClientProfile, 'id'>): Promise<ClientProfile> {
+  const updated = await api.realestate.clients.update(id, {
+    name: c.name, phone: c.phone, city: c.city, rooms: c.rooms,
+    budgetMax: c.budgetMax, deliveryBy: c.deliveryBy,
+  })
+  const mapped = mapClient(updated)
+  const i = CLIENT_PROFILES.findIndex(x => x.id === id)
+  if (i >= 0) CLIENT_PROFILES[i] = mapped
+  return mapped
+}
+
+export async function deleteClient(id: string): Promise<void> {
+  await api.realestate.clients.remove(id)
+  const i = CLIENT_PROFILES.findIndex(x => x.id === id)
+  if (i >= 0) CLIENT_PROFILES.splice(i, 1)
+}

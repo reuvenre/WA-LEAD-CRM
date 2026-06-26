@@ -1,4 +1,4 @@
-export type LeadStatus = 'NEW' | 'IN_PROGRESS' | 'HOT' | 'CLOSED' | 'LOST';
+export type LeadStatus = 'NEW' | 'IN_PROGRESS' | 'HOT' | 'CLOSED' | 'LOST' | 'IRRELEVANT';
 export type Priority = 'Low' | 'Med' | 'High';
 export type MessageType = 'text' | 'image';
 export type MessageDirection = 'inbound' | 'outbound';

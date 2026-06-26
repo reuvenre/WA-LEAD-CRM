@@ -3,14 +3,14 @@
 import {
   LayoutDashboard, Building2, Home, Building, KeyRound, GitBranch,
   CalendarDays, MessageSquare, FolderKanban, Settings as SettingsIcon,
-  Shield, LogOut,
+  Shield, LogOut, Users,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { ROLE_LABELS } from '@/lib/auth';
 
 export type ViewMode =
   | 'chat' | 'kanban' | 'dashboard' | 'projects' | 'calendar'
-  | 'deals' | 'properties' | 're_projects' | 'listings';
+  | 'deals' | 'properties' | 're_projects' | 'listings' | 'clients';
 
 type NavItem = { view: ViewMode; label: string; icon: typeof LayoutDashboard };
 
@@ -21,7 +21,8 @@ const NAV: NavItem[] = [
   { view: 'deals',       label: 'עסקאות',       icon: Building2 },
   { view: 'properties',  label: 'נכסים',        icon: Home },
   { view: 're_projects', label: 'פרויקטים',     icon: Building },
-  { view: 'listings',    label: 'דירות למכירה', icon: KeyRound },
+  { view: 'listings',    label: 'דירות יד שניה', icon: KeyRound },
+  { view: 'clients',     label: 'לקוחות',       icon: Users },
   { view: 'kanban',      label: 'פייפליין',     icon: GitBranch },
   { view: 'calendar',    label: 'יומן פגישות',  icon: CalendarDays },
   { view: 'chat',        label: 'WhatsApp',      icon: MessageSquare },

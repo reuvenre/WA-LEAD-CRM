@@ -15,6 +15,7 @@ enum LeadStatus {
   HOT
   CLOSED
   LOST
+  IRRELEVANT
 }
 
 enum Priority {

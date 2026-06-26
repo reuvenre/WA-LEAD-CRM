@@ -509,6 +509,26 @@ realestateRouter.post('/clients', async (req, res) => {
   } catch (e) { return fail(res, e, 'POST /clients'); }
 });
 
+realestateRouter.patch('/clients/:id', async (req, res) => {
+  try {
+    const existing = await prisma.rEClient.findFirst({ where: { id: req.params.id, tenantId: tid(req) } });
+    if (!existing) return res.status(404).json({ error: 'לקוח לא נמצא' });
+    const b = req.body;
+    const client = await prisma.rEClient.update({
+      where: { id: req.params.id },
+      data: {
+        ...(b.name !== undefined && { name: String(b.name).trim() }),
+        ...(b.phone !== undefined && { phone: b.phone || null }),
+        ...(b.city !== undefined && { city: b.city || null }),
+        ...(b.rooms !== undefined && { rooms: Number(b.rooms) || 0 }),
+        ...(b.budgetMax !== undefined && { budgetMax: Number(b.budgetMax) || 0 }),
+        ...(b.deliveryBy !== undefined && { deliveryBy: b.deliveryBy || null }),
+      },
+    });
+    return res.json(client);
+  } catch (e) { return fail(res, e, 'PATCH /clients/:id'); }
+});
+
 realestateRouter.delete('/clients/:id', async (req, res) => {
   try {
     const existing = await prisma.rEClient.findFirst({ where: { id: req.params.id, tenantId: tid(req) } });

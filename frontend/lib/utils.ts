@@ -89,6 +89,12 @@ export const STATUS_CONFIG: Record<
     bg: 'bg-slate-100',
     dot: 'bg-slate-400',
   },
+  IRRELEVANT: {
+    label: 'לא רלוונטי',
+    color: 'text-slate-600',
+    bg: 'bg-zinc-100',
+    dot: 'bg-zinc-400',
+  },
 };
 
 export const PRIORITY_CONFIG: Record<Priority, { label: string; color: string }> = {
@@ -97,5 +103,5 @@ export const PRIORITY_CONFIG: Record<Priority, { label: string; color: string }>
   High: { label: 'גבוהה', color: 'text-red-600' },
 };
 
-export const ALL_STATUSES: LeadStatus[] = ['NEW', 'IN_PROGRESS', 'HOT', 'CLOSED', 'LOST'];
+export const ALL_STATUSES: LeadStatus[] = ['NEW', 'IN_PROGRESS', 'HOT', 'CLOSED', 'LOST', 'IRRELEVANT'];
 export const ALL_PRIORITIES: Priority[] = ['Low', 'Med', 'High'];

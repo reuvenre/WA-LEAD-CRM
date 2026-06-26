@@ -119,7 +119,7 @@ export default function Listings() {
     <div className="p-6 space-y-5" style={{ maxWidth: 1280 }}>
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold" style={{ color: '#0F172A' }}>דירות למכירה — יד שנייה</h1>
+          <h1 className="text-xl font-bold" style={{ color: '#0F172A' }}>דירות יד שניה</h1>
           <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>נמשך מ-Yad2 · Madlan · מתאים למשרדי תיווך</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
