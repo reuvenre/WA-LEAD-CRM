@@ -63,7 +63,7 @@ export default function RegisterPage() {
             <MessageSquare className="w-8 h-8 text-white" />
           </div>
           <h1 className="text-2xl font-bold text-white">WA Lead CRM</h1>
-          <p className="text-brand-200 text-sm mt-1">מבית Win Solutions</p>
+          <p className="text-brand-200 text-sm mt-1"> Win Solutions מבית</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-2xl p-6 space-y-5">
