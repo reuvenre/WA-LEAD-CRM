@@ -106,3 +106,36 @@ input[type='range'] { accent-color: #2563eb; }
   cursor: pointer;
 }
 .filter-select:focus { border-color: #2563eb; box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.15); }
+
+/* ── Login animated real-estate / development background ──────────────────── */
+.login-bg { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.login-bg-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.login-bg-glow {
+  position: absolute; left: 50%; top: 16%; width: 75vw; height: 75vw;
+  transform: translate(-50%, -50%);
+  background: radial-gradient(circle, rgba(37, 99, 235, 0.28), transparent 62%);
+  filter: blur(46px);
+  animation: lbGlow 9s ease-in-out infinite;
+}
+@keyframes lbGlow {
+  0%, 100% { opacity: 0.55; transform: translate(-50%, -50%) scale(1); }
+  50%      { opacity: 0.85; transform: translate(-50%, -50%) scale(1.12); }
+}
+.login-bg .win {
+  animation-name: lbTwinkle; animation-iteration-count: infinite; animation-timing-function: ease-in-out;
+}
+@keyframes lbTwinkle { 0%, 100% { opacity: 0.16; } 50% { opacity: 0.92; } }
+.login-bg .particle {
+  animation-name: lbFloat; animation-iteration-count: infinite; animation-timing-function: linear;
+}
+@keyframes lbFloat {
+  0%   { transform: translateY(0); opacity: 0; }
+  12%  { opacity: 0.7; }
+  88%  { opacity: 0.45; }
+  100% { transform: translateY(-240px); opacity: 0; }
+}
+.login-bg .crane { transform-box: fill-box; transform-origin: 52% 100%; animation: lbCrane 8s ease-in-out infinite; }
+@keyframes lbCrane { 0%, 100% { transform: rotate(0deg); } 50% { transform: rotate(-1.6deg); } }
+.login-bg .hook { transform-box: fill-box; transform-origin: 50% 0%; animation: lbHook 5.5s ease-in-out infinite; }
+@keyframes lbHook { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(13px); } }
+@media (prefers-reduced-motion: reduce) { .login-bg *, .login-bg-glow { animation: none !important; } }
