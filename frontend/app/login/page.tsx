@@ -169,7 +169,7 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-br from-brand-900 via-brand-800 to-slate-900 p-4" dir="rtl">
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-b from-[#1e63c8] via-[#5b9be8] to-[#cfe3f7] p-4" dir="rtl">
       <LoginBackground />
       <div className="relative z-10 w-full max-w-sm">
         {/* Logo */}
@@ -354,7 +354,7 @@ export default function LoginPage() {
           )}
         </div>
 
-        <p className="text-center text-brand-300 text-xs mt-6">
+        <p className="text-center text-[#15356a] text-xs mt-6 font-medium">
           מאובטח עם JWT + TOTP · סשן פעיל 8 שעות
         </p>
       </div>

@@ -4,6 +4,7 @@ import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Lock, Eye, EyeOff, MessageSquare, AlertCircle, CheckCircle, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { LoginBackground } from '@/components/LoginBackground';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -16,8 +17,8 @@ const PASSWORD_RULES = [
 export default function ResetPasswordPage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-900 via-brand-800 to-slate-900">
-        <div className="w-8 h-8 rounded-full border-4 border-brand-200 border-t-brand-600 animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-[#1e63c8] via-[#5b9be8] to-[#cfe3f7]">
+        <div className="w-8 h-8 rounded-full border-4 border-white/40 border-t-white animate-spin" />
       </div>
     }>
       <ResetPasswordContent />
@@ -72,8 +73,9 @@ function ResetPasswordContent() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-900 via-brand-800 to-slate-900 p-4" dir="rtl">
-      <div className="w-full max-w-sm">
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-b from-[#1e63c8] via-[#5b9be8] to-[#cfe3f7] p-4" dir="rtl">
+      <LoginBackground />
+      <div className="relative z-10 w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur flex items-center justify-center mx-auto mb-4 border border-white/20">
@@ -160,7 +162,7 @@ function ResetPasswordContent() {
           )}
         </div>
 
-        <p className="text-center text-brand-300 text-xs mt-6">
+        <p className="text-center text-[#15356a] text-xs mt-6 font-medium">
           מאובטח עם JWT + TOTP · סשן פעיל 8 שעות
         </p>
       </div>

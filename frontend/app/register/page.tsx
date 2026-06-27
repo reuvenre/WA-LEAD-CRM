@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { MessageSquare, Building2, Mail, User, Lock, Eye, EyeOff, Check, AlertCircle, ArrowRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { LoginBackground } from '@/components/LoginBackground';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -55,8 +56,9 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-900 via-brand-800 to-slate-900 p-4" dir="rtl">
-      <div className="w-full max-w-md">
+    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-b from-[#1e63c8] via-[#5b9be8] to-[#cfe3f7] p-4" dir="rtl">
+      <LoginBackground />
+      <div className="relative z-10 w-full max-w-md">
         {/* Logo */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur flex items-center justify-center mx-auto mb-4 border border-white/20">
@@ -171,7 +173,7 @@ export default function RegisterPage() {
           </div>
         </div>
 
-        <p className="text-center text-brand-300 text-xs mt-6">
+        <p className="text-center text-[#15356a] text-xs mt-6 font-medium">
           מאובטח עם JWT · נתונים מוצפנים · תמיכה בעברית
         </p>
       </div>
