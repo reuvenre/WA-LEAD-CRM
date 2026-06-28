@@ -1,6 +1,6 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react'
-import { Users, Plus, Pencil, Trash2, Phone, MapPin, Home, Wallet, CalendarClock, Search } from 'lucide-react'
+import { Users, Plus, Pencil, Trash2, Phone, MapPin, Home, Wallet, CalendarClock, Search, MessageCircle } from 'lucide-react'
 import { loadClients, addClient, updateClient, deleteClient } from '@/lib/realestate/projects'
 import { ISRAELI_CITIES } from '@/lib/realestate/cities'
 import { Modal, FormRow, TextInput, SelectInput, SubmitButton } from '@/components/realestate/Modal'
@@ -54,9 +54,15 @@ export default function REClients() {
 
   const remove = async (c: ClientProfile) => {
     if (!confirm(`למחוק את הלקוח "${c.name}"?`)) return
-    await deleteClient(c.id)
+    let alsoDelete = false
+    if (c.linkedToWhatsapp) {
+      alsoDelete = confirm(
+        `הלקוח מחובר לאיש קשר ב-WhatsApp.\n\nאישור — מחק גם את איש הקשר וההתכתבות מ-WhatsApp.\nביטול — מחק רק את הלקוח, השאר את איש הקשר ב-WhatsApp.`,
+      )
+    }
+    await deleteClient(c.id, alsoDelete)
     setClients(prev => prev.filter(x => x.id !== c.id))
-    setToast(`"${c.name}" נמחק`)
+    setToast(alsoDelete ? `"${c.name}" נמחק (כולל WhatsApp)` : `"${c.name}" נמחק`)
   }
 
   if (loading) return (
@@ -93,6 +99,11 @@ export default function REClients() {
                 <div>
                   <h3 className="text-sm font-semibold" style={{ color: '#0F172A' }}>{c.name}</h3>
                   <p className="text-xs flex items-center gap-1" style={{ color: '#94A3B8' }}><Phone size={10} />{c.phone || '—'}</p>
+                  {c.linkedToWhatsapp && (
+                    <span className="inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded-full bg-green-100 text-green-700 text-[10px] font-semibold">
+                      <MessageCircle size={10} /> מחובר ל-WhatsApp
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-1">

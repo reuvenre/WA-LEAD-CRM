@@ -40,6 +40,7 @@ const mapProject = (r: REProjectRow): Project => ({
 const mapClient = (r: REClientRow): ClientProfile => ({
   id: r.id, name: r.name, phone: r.phone || '', city: r.city || '',
   rooms: r.rooms, budgetMax: r.budgetMax, deliveryBy: r.deliveryBy || '',
+  linkedToWhatsapp: Boolean(r.linkedToWhatsapp),
 })
 
 export async function loadProjects(): Promise<Project[]> {
@@ -169,8 +170,8 @@ export async function updateClient(id: string, c: Omit<ClientProfile, 'id'>): Pr
   return mapped
 }
 
-export async function deleteClient(id: string): Promise<void> {
-  await api.realestate.clients.remove(id)
+export async function deleteClient(id: string, deleteLead = false): Promise<void> {
+  await api.realestate.clients.remove(id, deleteLead)
   const i = CLIENT_PROFILES.findIndex(x => x.id === id)
   if (i >= 0) CLIENT_PROFILES.splice(i, 1)
 }

@@ -53,4 +53,5 @@ export interface ClientProfile {
   rooms: number
   budgetMax: number
   deliveryBy: string
+  linkedToWhatsapp?: boolean
 }

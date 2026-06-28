@@ -491,10 +491,26 @@ realestateRouter.post('/listings/search', async (req, res) => {
 });
 
 // ─── REClients (buyer profiles for matching) ──────────────────────────────────
+// Note summarising a buyer's criteria, used for the synced WhatsApp lead.
+const reClientNote = (city?: string | null, rooms?: number | null, budgetMax?: number | null) =>
+  ['לקוח נדל״ן',
+    city ? `עיר: ${city}` : '',
+    rooms ? `${rooms} חד׳` : '',
+    budgetMax ? `תקציב עד ₪${Number(budgetMax).toLocaleString('he-IL')}` : '',
+  ].filter(Boolean).join(' · ');
+
 realestateRouter.get('/clients', async (req, res) => {
   try {
-    const clients = await prisma.rEClient.findMany({ where: { tenantId: tid(req) }, orderBy: { createdAt: 'desc' } });
-    return res.json(clients);
+    const tenantId = tid(req);
+    const clients = await prisma.rEClient.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' } });
+    // Flag which clients are linked to a WhatsApp contact (a lead with the same phone).
+    const leadPhones = new Set(
+      (await prisma.lead.findMany({ where: { tenantId }, select: { phone: true } })).map((l) => l.phone),
+    );
+    return res.json(clients.map((c) => ({
+      ...c,
+      linkedToWhatsapp: Boolean(c.phone && leadPhones.has(normalizePhone(c.phone))),
+    })));
   } catch (e) { return fail(res, e, 'GET /clients'); }
 });
 
@@ -511,30 +527,27 @@ realestateRouter.post('/clients', async (req, res) => {
 
     // Cross-category sync: a client with a phone also becomes a CRM lead, so it
     // shows up in the WhatsApp window. Best-effort — never fail client creation.
+    let linkedToWhatsapp = false;
     if (phone && String(phone).trim()) {
       try {
         const normalizedPhone = normalizePhone(String(phone));
         if (normalizedPhone) {
           const existing = await prisma.lead.findFirst({ where: { tenantId: tid(req), phone: normalizedPhone } });
           if (!existing) {
-            const note = ['לקוח נדל״ן',
-              city ? `עיר: ${city}` : '',
-              rooms ? `${rooms} חד׳` : '',
-              budgetMax ? `תקציב עד ₪${Number(budgetMax).toLocaleString('he-IL')}` : '',
-            ].filter(Boolean).join(' · ');
             const lead = await prisma.lead.create({
-              data: { tenantId: tid(req), name: name.trim(), phone: normalizedPhone, internalNotes: note || null, tags: ['נדל״ן'] },
+              data: { tenantId: tid(req), name: name.trim(), phone: normalizedPhone, internalNotes: reClientNote(city, Number(rooms) || null, Number(budgetMax) || null) || null, tags: ['נדל״ן'] },
             });
             const io: SocketIOServer = req.app.get('io');
             io.to(tid(req)).emit(SOCKET_EVENTS.LEAD_CREATED, lead);
           }
+          linkedToWhatsapp = true;
         }
       } catch (e) {
         console.error('REClient→Lead sync failed:', (e as Error).message);
       }
     }
 
-    return res.status(201).json(client);
+    return res.status(201).json({ ...client, linkedToWhatsapp });
   } catch (e) { return fail(res, e, 'POST /clients'); }
 });
 
@@ -554,15 +567,62 @@ realestateRouter.patch('/clients/:id', async (req, res) => {
         ...(b.deliveryBy !== undefined && { deliveryBy: b.deliveryBy || null }),
       },
     });
-    return res.json(client);
+
+    // Sync name/phone changes to the linked WhatsApp lead (best-effort).
+    let linkedToWhatsapp = false;
+    try {
+      const tenantId = tid(req);
+      const newNorm = client.phone ? normalizePhone(client.phone) : null;
+      const oldNorm = existing.phone ? normalizePhone(existing.phone) : null;
+      if (newNorm) {
+        let lead = oldNorm ? await prisma.lead.findFirst({ where: { tenantId, phone: oldNorm } }) : null;
+        if (!lead) lead = await prisma.lead.findFirst({ where: { tenantId, phone: newNorm } });
+        const io: SocketIOServer = req.app.get('io');
+        if (lead) {
+          // Don't move the phone onto a number another lead already owns.
+          const conflict = lead.phone !== newNorm
+            ? await prisma.lead.findFirst({ where: { tenantId, phone: newNorm, NOT: { id: lead.id } } })
+            : null;
+          const updatedLead = await prisma.lead.update({
+            where: { id: lead.id },
+            data: { name: client.name, ...(conflict ? {} : { phone: newNorm }) },
+          });
+          io.to(tenantId).emit(SOCKET_EVENTS.LEAD_UPDATED, updatedLead);
+        } else {
+          const created = await prisma.lead.create({
+            data: { tenantId, name: client.name, phone: newNorm, internalNotes: reClientNote(client.city, client.rooms, client.budgetMax) || null, tags: ['נדל״ן'] },
+          });
+          io.to(tenantId).emit(SOCKET_EVENTS.LEAD_CREATED, created);
+        }
+        linkedToWhatsapp = true;
+      }
+    } catch (e) {
+      console.error('REClient→Lead update sync failed:', (e as Error).message);
+    }
+
+    return res.json({ ...client, linkedToWhatsapp });
   } catch (e) { return fail(res, e, 'PATCH /clients/:id'); }
 });
 
 realestateRouter.delete('/clients/:id', async (req, res) => {
   try {
-    const existing = await prisma.rEClient.findFirst({ where: { id: req.params.id, tenantId: tid(req) } });
+    const tenantId = tid(req);
+    const existing = await prisma.rEClient.findFirst({ where: { id: req.params.id, tenantId } });
     if (!existing) return res.status(404).json({ error: 'לקוח לא נמצא' });
     await prisma.rEClient.delete({ where: { id: req.params.id } });
+
+    // Optionally also remove the linked WhatsApp contact (?deleteLead=true).
+    if (req.query.deleteLead === 'true' && existing.phone) {
+      try {
+        const norm = normalizePhone(existing.phone);
+        if (norm) {
+          const lead = await prisma.lead.findFirst({ where: { tenantId, phone: norm } });
+          if (lead) await prisma.lead.delete({ where: { id: lead.id } }); // cascades messages/activities
+        }
+      } catch (e) {
+        console.error('REClient→Lead delete sync failed:', (e as Error).message);
+      }
+    }
     return res.status(204).send();
   } catch (e) { return fail(res, e, 'DELETE /clients/:id'); }
 });

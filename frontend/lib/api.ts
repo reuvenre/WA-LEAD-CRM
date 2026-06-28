@@ -14,7 +14,7 @@ export interface ListingRow {
   rooms: number; floor: number; totalFloors: number; sizeSqm: number; price: number; parking: boolean; elevator: boolean; balcony: boolean;
   renovated: boolean; entry: string; status: string; agent: string | null; listedBy: string; source: string; sourceUrl: string | null;
 }
-export interface REClientRow { id: string; name: string; phone: string | null; city: string | null; rooms: number; budgetMax: number; deliveryBy: string | null }
+export interface REClientRow { id: string; name: string; phone: string | null; city: string | null; rooms: number; budgetMax: number; deliveryBy: string | null; linkedToWhatsapp?: boolean }
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -136,7 +136,7 @@ export const api = {
       list: () => request<REClientRow[]>('/api/realestate/clients'),
       create: (data: Partial<REClientRow>) => request<REClientRow>('/api/realestate/clients', { method: 'POST', body: JSON.stringify(data) }),
       update: (id: string, data: Partial<REClientRow>) => request<REClientRow>(`/api/realestate/clients/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
-      remove: (id: string) => request<void>(`/api/realestate/clients/${id}`, { method: 'DELETE' }),
+      remove: (id: string, deleteLead = false) => request<void>(`/api/realestate/clients/${id}${deleteLead ? '?deleteLead=true' : ''}`, { method: 'DELETE' }),
     },
   },
 
