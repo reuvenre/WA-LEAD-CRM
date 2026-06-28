@@ -535,7 +535,7 @@ realestateRouter.post('/clients', async (req, res) => {
           const existing = await prisma.lead.findFirst({ where: { tenantId: tid(req), phone: normalizedPhone } });
           if (!existing) {
             const lead = await prisma.lead.create({
-              data: { tenantId: tid(req), name: name.trim(), phone: normalizedPhone, internalNotes: reClientNote(city, Number(rooms) || null, Number(budgetMax) || null) || null, tags: ['נדל״ן'] },
+              data: { tenantId: tid(req), name: name.trim(), phone: normalizedPhone, internalNotes: reClientNote(city, Number(rooms) || null, Number(budgetMax) || null) || null, tags: ['נדל״ן'], lastMessageAt: new Date() },
             });
             const io: SocketIOServer = req.app.get('io');
             io.to(tid(req)).emit(SOCKET_EVENTS.LEAD_CREATED, lead);
@@ -590,7 +590,7 @@ realestateRouter.patch('/clients/:id', async (req, res) => {
           io.to(tenantId).emit(SOCKET_EVENTS.LEAD_UPDATED, updatedLead);
         } else {
           const created = await prisma.lead.create({
-            data: { tenantId, name: client.name, phone: newNorm, internalNotes: reClientNote(client.city, client.rooms, client.budgetMax) || null, tags: ['נדל״ן'] },
+            data: { tenantId, name: client.name, phone: newNorm, internalNotes: reClientNote(client.city, client.rooms, client.budgetMax) || null, tags: ['נדל״ן'], lastMessageAt: new Date() },
           });
           io.to(tenantId).emit(SOCKET_EVENTS.LEAD_CREATED, created);
         }

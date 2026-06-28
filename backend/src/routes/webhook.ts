@@ -11,7 +11,13 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
   const body = req.body;
   const typeWebhook = body?.typeWebhook;
 
-  if (typeWebhook !== 'incomingMessageReceived') {
+  // Handle both directions: an inbound message, AND a message the user sent from
+  // their phone (outgoingMessageReceived) so phone replies show up in the CRM.
+  // We deliberately ignore outgoingAPIMessageReceived — those were sent via our
+  // own /messages/send and are already stored, so handling them would duplicate.
+  const isIncoming = typeWebhook === 'incomingMessageReceived';
+  const isOutgoing = typeWebhook === 'outgoingMessageReceived';
+  if (!isIncoming && !isOutgoing) {
     return res.status(200).json({ received: true });
   }
 
@@ -25,7 +31,9 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
   // Skip group messages
   if (!phone || chatId.includes('@g.us')) return res.status(200).json({ received: true });
 
-  const senderName: string = senderData.senderName ?? phone;
+  // Outgoing payloads don't carry the chat partner's name; fall back to the phone
+  // (only used when a new lead has to be created).
+  const contactName: string = isIncoming ? (senderData.senderName ?? phone) : phone;
 
   let content = '';
   let msgType: 'text' | 'image' = 'text';
@@ -49,11 +57,11 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
   const lead = existingLead
     ? await prisma.lead.update({ where: { id: existingLead.id }, data: { lastMessageAt: new Date() } })
     : await prisma.lead.create({
-        data: { tenantId, phone, name: senderName, lastMessageAt: new Date() },
+        data: { tenantId, phone, name: contactName, lastMessageAt: new Date() },
       });
 
   if (!existingLead) {
-    await logActivity(lead.id, tenantId, 'ליד נוצר', 'נוצר מהודעת וואצאפ נכנסת');
+    await logActivity(lead.id, tenantId, 'ליד נוצר', isIncoming ? 'נוצר מהודעת וואצאפ נכנסת' : 'נוצר מהודעת וואצאפ יוצאת (מהטלפון)');
   }
 
   const message = await prisma.message.create({
@@ -62,8 +70,8 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
       leadId: lead.id,
       content,
       type: msgType,
-      direction: 'inbound',
-      status: 'delivered',
+      direction: isIncoming ? 'inbound' : 'outbound',
+      status: isIncoming ? 'delivered' : 'sent',
     },
   });
 
@@ -72,7 +80,7 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
   io.to(tenantId).emit(SOCKET_EVENTS.LEAD_UPDATED, lead);
   if (!existingLead) io.to(tenantId).emit(SOCKET_EVENTS.LEAD_CREATED, lead);
 
-  console.log(`📩 [${tenantName}] ${senderName} (${phone}): ${content.substring(0, 50)}`);
+  console.log(`${isIncoming ? '📩' : '📤'} [${tenantName}] ${phone}: ${content.substring(0, 50)}`);
 
   return res.status(200).json({ received: true });
 }

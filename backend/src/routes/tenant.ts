@@ -52,7 +52,34 @@ tenantRouter.patch('/green-api', async (req: Request, res: Response) => {
     select: { id: true, greenApiInstanceId: true, greenApiWebhookUrl: true },
   });
 
-  return res.json({ success: true, tenant });
+  // Auto-configure the Green API instance to deliver BOTH incoming and outgoing
+  // (phone-sent) message webhooks to our endpoint — so replies the user sends from
+  // their phone show up in the CRM. Best-effort: never fail the save on this.
+  let webhooksConfigured = false;
+  const id = greenApiInstanceId?.trim();
+  const token = greenApiToken?.trim();
+  const hookUrl = greenApiWebhookUrl?.trim();
+  if (id && token) {
+    try {
+      const r = await fetch(`https://api.green-api.com/waInstance${id}/setSettings/${encodeURIComponent(token)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...(hookUrl ? { webhookUrl: hookUrl } : {}),
+          incomingWebhook: 'yes',
+          outgoingMessageWebhook: 'yes',     // messages sent from the phone
+          outgoingAPIMessageWebhook: 'no',   // sent via our API — already stored
+          stateWebhook: 'no',
+        }),
+      });
+      webhooksConfigured = r.ok;
+      if (!r.ok) console.warn(`Green API setSettings HTTP ${r.status}`);
+    } catch (e) {
+      console.warn('Green API setSettings failed:', (e as Error).message);
+    }
+  }
+
+  return res.json({ success: true, tenant, webhooksConfigured });
 });
 
 // POST /api/tenant/green-api/test — validate credentials against Green API itself.
