@@ -1,0 +1,14 @@
+{
+  "name": "wa-lead-crm",
+  "private": true,
+  "description": "WA Lead CRM monorepo — frontend (Next.js) + packages/ui design system. Backend builds independently on Railway.",
+  "workspaces": [
+    "frontend",
+    "packages/ui"
+  ],
+  "scripts": {
+    "build:ui": "npm run build --workspace=@wa-lead/ui",
+    "build:web": "npm run build --workspace=whatsapp-crm-frontend",
+    "build": "npm run build:ui && npm run build:web"
+  }
+}
