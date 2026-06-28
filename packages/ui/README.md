@@ -7,8 +7,10 @@ rendered in Storybook, consumed by the app, and synced to **claude.ai/design**
 via `/design-sync`.
 
 ## Components
-`Button`, `Badge`, `Card` + `KpiCard`, `Input`, `Select`, `Avatar`, `Modal`,
-`Sidebar` (the navy navigation rail). Plus the `cn` class-merge helper.
+Primitives: `Button`, `IconButton`, `Badge`, `Card` + `KpiCard`, `Stat`,
+`Input`, `Select`, `Avatar`, `Spinner`, `Toast`, `EmptyState`, `SectionHeader`,
+`Modal`, `Sidebar` (the navy navigation rail).
+Real-estate: `ListingCard` (the flagship resale card). Plus the `cn` helper.
 
 ## Install & develop
 
