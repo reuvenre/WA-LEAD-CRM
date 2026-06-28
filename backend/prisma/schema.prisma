@@ -155,17 +155,19 @@ model Lead {
 }
 
 model Message {
-  id        String           @id @default(cuid())
-  tenantId  String
-  leadId    String
-  lead      Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
-  content   String
-  type      MessageType      @default(text)
-  direction MessageDirection
-  status    MessageStatus    @default(sent)
-  timestamp DateTime         @default(now())
+  id         String           @id @default(cuid())
+  tenantId   String
+  leadId     String
+  lead       Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  content    String
+  type       MessageType      @default(text)
+  direction  MessageDirection
+  status     MessageStatus    @default(sent)
+  externalId String?          // Green API idMessage — used to apply delivered/read status updates
+  timestamp  DateTime         @default(now())
 
   @@index([leadId, timestamp])
+  @@index([externalId])
 }
 
 model Template {

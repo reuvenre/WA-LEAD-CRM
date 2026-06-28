@@ -6,8 +6,11 @@ import type { Message, Lead } from '@/types';
 
 const SOCKET_URL = process.env.NEXT_PUBLIC_SOCKET_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
+export type MessageStatusUpdate = { id: string; leadId: string; status: Message['status'] };
+
 export type SocketEventHandlers = {
   onNewMessage?: (message: Message) => void;
+  onMessageStatus?: (update: MessageStatusUpdate) => void;
   onLeadUpdated?: (lead: Lead) => void;
   onLeadCreated?: (lead: Lead) => void;
 };
@@ -47,6 +50,7 @@ export function useSocket(handlers: SocketEventHandlers, activeLeadId?: string) 
 
     socket.on('connect', () => console.log('🔌 Socket connected:', socket.id));
     socket.on('message:new', (message: Message) => handlersRef.current.onNewMessage?.(message));
+    socket.on('message:status', (u: MessageStatusUpdate) => handlersRef.current.onMessageStatus?.(u));
     socket.on('lead:updated', (lead: Lead) => handlersRef.current.onLeadUpdated?.(lead));
     socket.on('lead:created', (lead: Lead) => handlersRef.current.onLeadCreated?.(lead));
     socket.on('disconnect', (reason) => console.log('🔌 Socket disconnected:', reason));

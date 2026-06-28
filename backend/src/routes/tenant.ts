@@ -67,6 +67,7 @@ tenantRouter.patch('/green-api', async (req: Request, res: Response) => {
         body: JSON.stringify({
           ...(hookUrl ? { webhookUrl: hookUrl } : {}),
           incomingWebhook: 'yes',
+          outgoingWebhook: 'yes',            // delivery/read status receipts
           outgoingMessageWebhook: 'yes',     // messages sent from the phone
           outgoingAPIMessageWebhook: 'no',   // sent via our API — already stored
           stateWebhook: 'no',

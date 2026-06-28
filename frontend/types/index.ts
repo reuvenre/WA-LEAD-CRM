@@ -2,7 +2,7 @@ export type LeadStatus = 'NEW' | 'IN_PROGRESS' | 'HOT' | 'CLOSED' | 'LOST' | 'IR
 export type Priority = 'Low' | 'Med' | 'High';
 export type MessageType = 'text' | 'image';
 export type MessageDirection = 'inbound' | 'outbound';
-export type MessageStatus = 'sent' | 'delivered' | 'read';
+export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
 export interface Project {
   id: string;

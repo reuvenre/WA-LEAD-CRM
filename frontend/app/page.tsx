@@ -84,6 +84,9 @@ export default function CRMPage() {
         prev.map((l) => l.id === message.leadId ? { ...l, lastMessageAt: message.timestamp } : l)
       );
     },
+    onMessageStatus: ({ id, status }) => {
+      setMessages((prev) => prev.map((m) => m.id === id ? { ...m, status } : m));
+    },
     onLeadUpdated: (updatedLead: Lead) => {
       setLeads((prev) => prev.map((l) => l.id === updatedLead.id ? { ...l, ...updatedLead } : l));
       if (updatedLead.id === selectedLeadId) {
@@ -97,10 +100,29 @@ export default function CRMPage() {
 
   // ─── Handlers ────────────────────────────────────────────────────────────────
   const handleSendMessage = async (content: string) => {
-    if (!selectedLeadId) return;
+    const leadId = selectedLeadId;
+    if (!leadId) return;
+
+    // Optimistic: show the message instantly (status "sending") instead of waiting
+    // for the Green API round-trip, then reconcile with the real one.
+    const tempId = `temp_${Date.now()}`;
+    const optimistic: Message = {
+      id: tempId, leadId, content, type: 'text',
+      direction: 'outbound', status: 'sending', timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, lastMessageAt: optimistic.timestamp } : l));
+
     try {
-      await api.messages.send(selectedLeadId, content);
+      const { message } = await api.messages.send(leadId, content);
+      setMessages((prev) => {
+        const withoutTemp = prev.filter((m) => m.id !== tempId);
+        // The socket NEW_MESSAGE may already have appended the real message.
+        if (withoutTemp.some((m) => m.id === message.id)) return withoutTemp;
+        return [...withoutTemp, message];
+      });
     } catch (err) {
+      setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, status: 'failed' } : m));
       alert(err instanceof Error ? err.message : 'שליחת ההודעה נכשלה');
     }
   };

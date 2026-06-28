@@ -56,6 +56,7 @@ messagesRouter.post('/send', async (req: Request, res: Response) => {
         type: type === 'image' ? 'image' : 'text',
         direction: 'outbound',
         status: 'sent',
+        externalId: result.messageId ?? null,
       },
     });
 

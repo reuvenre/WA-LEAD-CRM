@@ -23,6 +23,7 @@ export function initSocket(io: SocketIOServer) {
 // Event names used across the app
 export const SOCKET_EVENTS = {
   NEW_MESSAGE: 'message:new',
+  MESSAGE_STATUS: 'message:status',
   LEAD_UPDATED: 'lead:updated',
   LEAD_CREATED: 'lead:created',
 } as const;

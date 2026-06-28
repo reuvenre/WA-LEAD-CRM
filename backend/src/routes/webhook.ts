@@ -11,6 +11,24 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
   const body = req.body;
   const typeWebhook = body?.typeWebhook;
 
+  // Delivery/read receipts: update the matching outbound message's status so the
+  // chat shows ✓ → ✓✓ → ✓✓ (blue). Matched by Green API idMessage (externalId).
+  if (typeWebhook === 'outgoingMessageStatus') {
+    const idMessage: string = body?.idMessage ?? '';
+    const statusMap: Record<string, 'sent' | 'delivered' | 'read'> = { sent: 'sent', delivered: 'delivered', read: 'read' };
+    const newStatus = statusMap[body?.status as string];
+    if (idMessage && newStatus) {
+      const msg = await prisma.message.findFirst({ where: { tenantId, externalId: idMessage } });
+      const rank = { sent: 1, delivered: 2, read: 3 } as const;
+      if (msg && rank[newStatus] > rank[(msg.status as 'sent' | 'delivered' | 'read')]) {
+        const updated = await prisma.message.update({ where: { id: msg.id }, data: { status: newStatus } });
+        const io: SocketIOServer = req.app.get('io');
+        io.to(tenantId).emit(SOCKET_EVENTS.MESSAGE_STATUS, { id: updated.id, leadId: updated.leadId, status: updated.status });
+      }
+    }
+    return res.status(200).json({ received: true });
+  }
+
   // Handle both directions: an inbound message, AND a message the user sent from
   // their phone (outgoingMessageReceived) so phone replies show up in the CRM.
   // We deliberately ignore outgoingAPIMessageReceived — those were sent via our

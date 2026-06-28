@@ -8,6 +8,7 @@ import {
   CheckCheck,
   Check,
   Clock,
+  AlertCircle,
   Image as ImageIcon,
 } from 'lucide-react';
 import { TemplateSelector } from './TemplateSelector';
@@ -238,13 +239,15 @@ function MessageBubble({
 }
 
 function MessageStatusIcon({ status }: { status: Message['status'] }) {
+  if (status === 'failed')
+    return <AlertCircle className="w-3.5 h-3.5 text-red-400" />;
   if (status === 'read')
     return <CheckCheck className="w-3.5 h-3.5 text-brand-500" />;
   if (status === 'delivered')
     return <CheckCheck className="w-3.5 h-3.5 text-slate-400" />;
   if (status === 'sent')
     return <Check className="w-3.5 h-3.5 text-slate-400" />;
-  return <Clock className="w-3 h-3 text-slate-300" />;
+  return <Clock className="w-3 h-3 text-slate-300" />; // sending
 }
 
 // ─── Status Selector ───────────────────────────────────────────────────────
