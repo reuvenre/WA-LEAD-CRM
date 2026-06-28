@@ -1,5 +1,8 @@
 import { Router, Request, Response } from 'express';
+import type { Server as SocketIOServer } from 'socket.io';
 import { prisma } from '../lib/prisma';
+import { normalizePhone } from './leads';
+import { SOCKET_EVENTS } from '../socket';
 
 // Real-estate domain API (phase-2). All routes tenant-scoped via req.user.tenantId.
 export const realestateRouter = Router();
@@ -505,6 +508,32 @@ realestateRouter.post('/clients', async (req, res) => {
         rooms: Number(rooms) || 0, budgetMax: Number(budgetMax) || 0, deliveryBy: deliveryBy || null,
       },
     });
+
+    // Cross-category sync: a client with a phone also becomes a CRM lead, so it
+    // shows up in the WhatsApp window. Best-effort — never fail client creation.
+    if (phone && String(phone).trim()) {
+      try {
+        const normalizedPhone = normalizePhone(String(phone));
+        if (normalizedPhone) {
+          const existing = await prisma.lead.findFirst({ where: { tenantId: tid(req), phone: normalizedPhone } });
+          if (!existing) {
+            const note = ['לקוח נדל״ן',
+              city ? `עיר: ${city}` : '',
+              rooms ? `${rooms} חד׳` : '',
+              budgetMax ? `תקציב עד ₪${Number(budgetMax).toLocaleString('he-IL')}` : '',
+            ].filter(Boolean).join(' · ');
+            const lead = await prisma.lead.create({
+              data: { tenantId: tid(req), name: name.trim(), phone: normalizedPhone, internalNotes: note || null, tags: ['נדל״ן'] },
+            });
+            const io: SocketIOServer = req.app.get('io');
+            io.to(tid(req)).emit(SOCKET_EVENTS.LEAD_CREATED, lead);
+          }
+        }
+      } catch (e) {
+        console.error('REClient→Lead sync failed:', (e as Error).message);
+      }
+    }
+
     return res.status(201).json(client);
   } catch (e) { return fail(res, e, 'POST /clients'); }
 });

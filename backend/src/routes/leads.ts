@@ -270,7 +270,7 @@ leadsRouter.delete('/:id', async (req: Request, res: Response) => {
 // Normalizes to an international number WITHOUT a leading '+'. Numbers entered with an
 // explicit international prefix ('+' or '00') keep their own country code; bare local
 // numbers (leading '0') and digit-only input default to Israel (972).
-function normalizePhone(phone: string): string {
+export function normalizePhone(phone: string): string {
   const trimmed = phone.trim();
   const digits = trimmed.replace(/\D/g, '');
   if (!digits) return digits;
