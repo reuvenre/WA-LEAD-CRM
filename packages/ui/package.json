@@ -4,18 +4,18 @@
   "description": "WA Lead CRM design system — presentational React components, tokens and Tailwind preset.",
   "license": "UNLICENSED",
   "type": "module",
-  "main": "./src/index.ts",
-  "module": "./src/index.ts",
-  "types": "./src/index.ts",
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
   "exports": {
     ".": {
-      "types": "./src/index.ts",
-      "default": "./src/index.ts"
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
     },
     "./styles.css": "./src/styles.css",
     "./tailwind-preset": "./tailwind-preset.cjs"
   },
-  "files": ["src", "tailwind-preset.cjs", "dist"],
+  "files": ["dist", "src/styles.css", "tailwind-preset.cjs"],
   "sideEffects": ["*.css"],
   "scripts": {
     "build": "tsup",
@@ -28,10 +28,7 @@
     "react": "^18 || ^19",
     "react-dom": "^18 || ^19"
   },
-  "dependencies": {
-    "clsx": "^2.1.1",
-    "tailwind-merge": "^2.5.4"
-  },
+  "dependencies": {},
   "devDependencies": {
     "@storybook/addon-essentials": "^8.4.6",
     "@storybook/react": "^8.4.6",
