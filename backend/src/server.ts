@@ -63,7 +63,9 @@ app.use(cors({
   credentials: true,
 }));
 
-app.use(express.json());
+// 25mb accommodates base64-encoded image/document uploads (POST /messages/send-file).
+// WhatsApp media tops out ~16MB for most types; base64 inflates by ~33%.
+app.use(express.json({ limit: '25mb' }));
 
 // ─── Public routes ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRouter);

@@ -54,20 +54,33 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
   const contactName: string = isIncoming ? (senderData.senderName ?? phone) : phone;
 
   let content = '';
-  let msgType: 'text' | 'image' = 'text';
+  let msgType: 'text' | 'image' | 'document' = 'text';
+  let mediaUrl: string | null = null;
+  let fileName: string | null = null;
 
   if (messageData.typeMessage === 'textMessage') {
     content = messageData.textMessageData?.textMessage ?? '';
   } else if (messageData.typeMessage === 'imageMessage') {
-    content = messageData.fileMessageData?.caption ?? '[תמונה]';
+    const fd = messageData.fileMessageData ?? {};
+    content = fd.caption ?? '';
+    mediaUrl = fd.downloadUrl ?? null;
+    fileName = fd.fileName ?? null;
     msgType = 'image';
+  } else if (messageData.typeMessage === 'documentMessage') {
+    const fd = messageData.fileMessageData ?? {};
+    content = fd.caption ?? '';
+    mediaUrl = fd.downloadUrl ?? null;
+    fileName = fd.fileName ?? null;
+    msgType = 'document';
   } else if (messageData.typeMessage === 'extendedTextMessage') {
     content = messageData.extendedTextMessageData?.text ?? '';
   } else {
     return res.status(200).json({ received: true });
   }
 
-  if (!content) return res.status(200).json({ received: true });
+  // Text needs content; media is valid even with an empty caption as long as we
+  // have the file itself.
+  if (!content && !mediaUrl) return res.status(200).json({ received: true });
 
   // Upsert lead — scoped to this tenant
   const existingLead = await prisma.lead.findFirst({ where: { tenantId, phone } });
@@ -88,6 +101,8 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
       leadId: lead.id,
       content,
       type: msgType,
+      mediaUrl,
+      fileName,
       direction: isIncoming ? 'inbound' : 'outbound',
       status: isIncoming ? 'delivered' : 'sent',
     },

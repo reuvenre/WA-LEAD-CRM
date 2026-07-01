@@ -1,6 +1,6 @@
 export type LeadStatus = 'NEW' | 'IN_PROGRESS' | 'HOT' | 'CLOSED' | 'LOST' | 'IRRELEVANT';
 export type Priority = 'Low' | 'Med' | 'High';
-export type MessageType = 'text' | 'image';
+export type MessageType = 'text' | 'image' | 'document';
 export type MessageDirection = 'inbound' | 'outbound';
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
 
@@ -41,6 +41,8 @@ export interface Message {
   leadId: string;
   content: string;
   type: MessageType;
+  mediaUrl?: string | null;
+  fileName?: string | null;
   direction: MessageDirection;
   status: MessageStatus;
   timestamp: string;

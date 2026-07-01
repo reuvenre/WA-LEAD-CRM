@@ -27,6 +27,7 @@ enum Priority {
 enum MessageType {
   text
   image
+  document
 }
 
 enum MessageDirection {
@@ -161,6 +162,8 @@ model Message {
   lead       Lead             @relation(fields: [leadId], references: [id], onDelete: Cascade)
   content    String
   type       MessageType      @default(text)
+  mediaUrl   String?          // Green API urlFile / downloadUrl for image & document messages
+  fileName   String?          // original filename (documents) shown as the download label
   direction  MessageDirection
   status     MessageStatus    @default(sent)
   externalId String?          // Green API idMessage — used to apply delivered/read status updates

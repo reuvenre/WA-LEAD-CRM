@@ -23,6 +23,20 @@ function getToken(): string {
   return localStorage.getItem('crm_token') ?? '';
 }
 
+// Read a File into a base64 string (without the `data:...;base64,` prefix) so it
+// can be sent as JSON to the backend, which forwards the bytes to Green API.
+function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      resolve(result.includes(',') ? result.split(',')[1] : result);
+    };
+    reader.onerror = () => reject(reader.error ?? new Error('קריאת הקובץ נכשלה'));
+    reader.readAsDataURL(file);
+  });
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getToken();
   const res = await fetch(`${BASE}${path}`, {
@@ -74,6 +88,13 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ leadId, content, type }),
       }),
+    sendFile: async (leadId: string, file: File, caption = '') => {
+      const fileBase64 = await fileToBase64(file);
+      return request<{ message: Message }>('/api/messages/send-file', {
+        method: 'POST',
+        body: JSON.stringify({ leadId, fileBase64, fileName: file.name, mimeType: file.type, caption }),
+      });
+    },
   },
 
   templates: {

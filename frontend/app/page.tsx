@@ -127,6 +127,39 @@ export default function CRMPage() {
     }
   };
 
+  const handleSendFile = async (file: File) => {
+    const leadId = selectedLeadId;
+    if (!leadId) return;
+
+    const isImage = file.type.startsWith('image/');
+    const tempId = `temp_${Date.now()}`;
+    // Local preview so images appear instantly while the upload is in flight.
+    const previewUrl = isImage ? URL.createObjectURL(file) : null;
+    const optimistic: Message = {
+      id: tempId, leadId, content: '', type: isImage ? 'image' : 'document',
+      mediaUrl: previewUrl, fileName: file.name,
+      direction: 'outbound', status: 'sending', timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, optimistic]);
+    setLeads((prev) => prev.map((l) => l.id === leadId ? { ...l, lastMessageAt: optimistic.timestamp } : l));
+
+    try {
+      const { message } = await api.messages.sendFile(leadId, file);
+      setMessages((prev) => {
+        const withoutTemp = prev.filter((m) => m.id !== tempId);
+        if (withoutTemp.some((m) => m.id === message.id)) return withoutTemp;
+        return [...withoutTemp, message];
+      });
+      // Real message now carries the hosted URL; drop the local preview.
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+    } catch (err) {
+      // Keep the local preview on failure so the user still sees what they tried
+      // to send (marked failed). The object URL is released when the page unloads.
+      setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, status: 'failed' } : m));
+      alert(err instanceof Error ? err.message : 'שליחת הקובץ נכשלה');
+    }
+  };
+
   const handleLeadUpdate = async (
     data: Partial<Pick<Lead, 'status' | 'priority' | 'internalNotes' | 'assignedTo' | 'tags'>>
   ) => {
@@ -233,6 +266,7 @@ export default function CRMPage() {
             lead={selectedLead}
             messages={messages}
             onSendMessage={handleSendMessage}
+            onSendFile={handleSendFile}
             onLeadUpdate={handleLeadUpdate}
           />
         ) : (

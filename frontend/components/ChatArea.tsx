@@ -9,7 +9,8 @@ import {
   Check,
   Clock,
   AlertCircle,
-  Image as ImageIcon,
+  Paperclip,
+  FileText,
 } from 'lucide-react';
 import { TemplateSelector } from './TemplateSelector';
 import { cn, STATUS_CONFIG, formatFullTime, ALL_STATUSES } from '@/lib/utils';
@@ -19,15 +20,18 @@ interface ChatAreaProps {
   lead: Lead;
   messages: Message[];
   onSendMessage: (content: string) => Promise<void>;
+  onSendFile: (file: File) => Promise<void>;
   onLeadUpdate: (data: Partial<Lead>) => Promise<void>;
 }
 
-export function ChatArea({ lead, messages, onSendMessage, onLeadUpdate }: ChatAreaProps) {
+export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpdate }: ChatAreaProps) {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-scroll to bottom on new message
   useEffect(() => {
@@ -58,6 +62,18 @@ export function ChatArea({ lead, messages, onSendMessage, onLeadUpdate }: ChatAr
     setInput(body);
     textareaRef.current?.focus();
   }, []);
+
+  const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // reset so picking the same file again re-fires onChange
+    if (!file || uploading) return;
+    setUploading(true);
+    try {
+      await onSendFile(file);
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const statusCfg = STATUS_CONFIG[lead.status as LeadStatus];
 
@@ -141,12 +157,26 @@ export function ChatArea({ lead, messages, onSendMessage, onLeadUpdate }: ChatAr
             )}
           </div>
 
-          {/* Image button */}
+          {/* Attach file (image / document) button */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
+            className="hidden"
+            onChange={handleFilePick}
+          />
           <button
-            className="w-9 h-9 flex items-center justify-center rounded-lg border border-surface-border text-slate-500 hover:bg-surface-subtle transition flex-shrink-0"
-            title="שלח תמונה"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className={cn(
+              'w-9 h-9 flex items-center justify-center rounded-lg border border-surface-border transition flex-shrink-0',
+              uploading
+                ? 'text-slate-300 cursor-wait'
+                : 'text-slate-500 hover:bg-surface-subtle'
+            )}
+            title="צירוף תמונה או מסמך"
           >
-            <ImageIcon className="w-4 h-4" />
+            {uploading ? <Clock className="w-4 h-4 animate-pulse" /> : <Paperclip className="w-4 h-4" />}
           </button>
 
           {/* Textarea */}
@@ -214,7 +244,34 @@ function MessageBubble({
             : 'bg-brand-600 text-white rounded-tl-sm'
         )}
       >
-        <p className="whitespace-pre-wrap break-words">{message.content}</p>
+        {message.type === 'image' && message.mediaUrl && (
+          <a href={message.mediaUrl} target="_blank" rel="noopener noreferrer" className="block">
+            <img
+              src={message.mediaUrl}
+              alt={message.fileName ?? 'תמונה'}
+              className="rounded-lg max-w-full max-h-64 object-cover mb-1"
+            />
+          </a>
+        )}
+        {message.type === 'document' && message.mediaUrl && (
+          <a
+            href={message.mediaUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(
+              'flex items-center gap-2 mb-1 px-2 py-1.5 rounded-lg transition',
+              isOutbound ? 'bg-surface-subtle hover:bg-slate-100' : 'bg-brand-700/40 hover:bg-brand-700/60'
+            )}
+          >
+            <FileText className="w-5 h-5 flex-shrink-0" />
+            <span className="text-xs font-medium underline break-all">
+              {message.fileName ?? 'מסמך'}
+            </span>
+          </a>
+        )}
+        {message.content && (
+          <p className="whitespace-pre-wrap break-words">{message.content}</p>
+        )}
         {showTime && (
           <div
             className={cn(
