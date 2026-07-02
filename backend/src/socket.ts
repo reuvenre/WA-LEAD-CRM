@@ -22,3 +22,21 @@ export const SOCKET_EVENTS = {
   LEAD_UPDATED: 'lead:updated',
   LEAD_CREATED: 'lead:created',
 } as const;
+
+// Per-agent room. Managers sit in the plain `tenantId` room and see everything;
+// agents sit ONLY in their personal room so realtime events for other agents'
+// conversations never reach them.
+export const agentRoom = (tenantId: string, username: string) => `${tenantId}::agent::${username}`;
+
+// Emit a lead-scoped event to exactly the users allowed to see it: all managers
+// (tenant room) plus the assigned agent (if any). Unassigned leads → managers only.
+export function emitScoped(
+  io: SocketIOServer,
+  tenantId: string,
+  assignedTo: string | null | undefined,
+  event: string,
+  payload: unknown,
+) {
+  io.to(tenantId).emit(event, payload);
+  if (assignedTo) io.to(agentRoom(tenantId, assignedTo)).emit(event, payload);
+}

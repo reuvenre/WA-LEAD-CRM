@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import type { Server as SocketIOServer } from 'socket.io';
 import { prisma } from '../lib/prisma';
 import { normalizePhone } from './leads';
-import { SOCKET_EVENTS } from '../socket';
+import { SOCKET_EVENTS, emitScoped } from '../socket';
 
 // Real-estate domain API (phase-2). All routes tenant-scoped via req.user.tenantId.
 export const realestateRouter = Router();
@@ -545,7 +545,7 @@ realestateRouter.post('/clients', async (req, res) => {
               data: { tenantId: tid(req), name: name.trim(), phone: normalizedPhone, internalNotes: reClientNote(city, Number(rooms) || null, Number(budgetMax) || null) || null, tags: ['נדל״ן'], lastMessageAt: new Date() },
             });
             const io: SocketIOServer = req.app.get('io');
-            io.to(tid(req)).emit(SOCKET_EVENTS.LEAD_CREATED, lead);
+            emitScoped(io, tid(req), lead.assignedTo, SOCKET_EVENTS.LEAD_CREATED, lead);
           }
           linkedToWhatsapp = true;
         }
@@ -594,12 +594,12 @@ realestateRouter.patch('/clients/:id', async (req, res) => {
             where: { id: lead.id },
             data: { name: client.name, ...(conflict ? {} : { phone: newNorm }) },
           });
-          io.to(tenantId).emit(SOCKET_EVENTS.LEAD_UPDATED, updatedLead);
+          emitScoped(io, tenantId, updatedLead.assignedTo, SOCKET_EVENTS.LEAD_UPDATED, updatedLead);
         } else {
           const created = await prisma.lead.create({
             data: { tenantId, name: client.name, phone: newNorm, internalNotes: reClientNote(client.city, client.rooms, client.budgetMax) || null, tags: ['נדל״ן'], lastMessageAt: new Date() },
           });
-          io.to(tenantId).emit(SOCKET_EVENTS.LEAD_CREATED, created);
+          emitScoped(io, tenantId, created.assignedTo, SOCKET_EVENTS.LEAD_CREATED, created);
         }
         linkedToWhatsapp = true;
       }

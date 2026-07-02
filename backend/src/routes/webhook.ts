@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
-import { SOCKET_EVENTS } from '../socket';
+import { SOCKET_EVENTS, emitScoped } from '../socket';
 import { Server as SocketIOServer } from 'socket.io';
 import { logActivity } from '../lib/activity';
 
@@ -31,12 +31,12 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
     const statusMap: Record<string, 'sent' | 'delivered' | 'read'> = { sent: 'sent', delivered: 'delivered', read: 'read' };
     const newStatus = statusMap[body?.status as string];
     if (idMessage && newStatus) {
-      const msg = await prisma.message.findFirst({ where: { tenantId, externalId: idMessage } });
+      const msg = await prisma.message.findFirst({ where: { tenantId, externalId: idMessage }, include: { lead: true } });
       const rank = { sent: 1, delivered: 2, read: 3 } as const;
       if (msg && rank[newStatus] > rank[(msg.status as 'sent' | 'delivered' | 'read')]) {
         const updated = await prisma.message.update({ where: { id: msg.id }, data: { status: newStatus } });
         const io: SocketIOServer = req.app.get('io');
-        io.to(tenantId).emit(SOCKET_EVENTS.MESSAGE_STATUS, { id: updated.id, leadId: updated.leadId, status: updated.status });
+        emitScoped(io, tenantId, msg.lead?.assignedTo, SOCKET_EVENTS.MESSAGE_STATUS, { id: updated.id, leadId: updated.leadId, status: updated.status });
       }
     }
     return res.status(200).json({ received: true });
@@ -131,9 +131,11 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
   });
 
   const io: SocketIOServer = req.app.get('io');
-  io.to(tenantId).emit(SOCKET_EVENTS.NEW_MESSAGE, message);
-  io.to(tenantId).emit(SOCKET_EVENTS.LEAD_UPDATED, lead);
-  if (!existingLead) io.to(tenantId).emit(SOCKET_EVENTS.LEAD_CREATED, lead);
+  // Route to managers + the assigned agent only. A brand-new inbound lead has no
+  // assignee yet → managers see it and can assign it.
+  emitScoped(io, tenantId, lead.assignedTo, SOCKET_EVENTS.NEW_MESSAGE, message);
+  emitScoped(io, tenantId, lead.assignedTo, SOCKET_EVENTS.LEAD_UPDATED, lead);
+  if (!existingLead) emitScoped(io, tenantId, lead.assignedTo, SOCKET_EVENTS.LEAD_CREATED, lead);
 
   console.log(`${isIncoming ? '📩' : '📤'} [${tenantName}] ${phone}: ${content.substring(0, 50)}`);
 

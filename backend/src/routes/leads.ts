@@ -1,8 +1,9 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { LeadStatus, Priority } from '@prisma/client';
-import { SOCKET_EVENTS } from '../socket';
+import { SOCKET_EVENTS, emitScoped } from '../socket';
 import { Server as SocketIOServer } from 'socket.io';
+import { leadScope, canAccessLead, isManager } from '../middleware/auth';
 import { logActivity } from '../lib/activity';
 import { triggerAutomations } from '../lib/automations';
 import { syncLeadMeeting } from '../lib/google';
@@ -19,7 +20,8 @@ leadsRouter.get('/', async (req: Request, res: Response) => {
     const pageN = Math.max(parseInt(page as string) || 1, 1);
     const skip = (pageN - 1) * take;
 
-    const where: Record<string, unknown> = { tenantId };
+    // Agents only see their own conversations; managers see the whole tenant.
+    const where: Record<string, unknown> = { tenantId, ...leadScope(req) };
 
     if (status && status !== 'all') where.status = status as LeadStatus;
     if (tags) where.tags = { hasSome: (tags as string).split(',') };
@@ -62,6 +64,7 @@ leadsRouter.get('/calendar', async (req: Request, res: Response) => {
     const leads = await prisma.lead.findMany({
       where: {
         tenantId,
+        ...leadScope(req),
         meetingDate: { gte: start, lt: end },
       },
       select: {
@@ -92,7 +95,8 @@ leadsRouter.get('/:id', async (req: Request, res: Response) => {
       },
     });
 
-    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+    // Don't reveal another agent's lead — 404 (not 403) so existence isn't leaked.
+    if (!lead || !canAccessLead(req, lead.assignedTo)) return res.status(404).json({ error: 'Lead not found' });
     return res.json(lead);
   } catch (error) {
     console.error('GET /leads/:id error:', error);
@@ -107,7 +111,12 @@ leadsRouter.patch('/:id', async (req: Request, res: Response) => {
     const { name, email, company, status, priority, internalNotes, assignedTo, tags, projectId, meetingDate, meetingNotes } = req.body;
 
     const current = await prisma.lead.findFirst({ where: { id: req.params.id, tenantId } });
-    if (!current) return res.status(404).json({ error: 'Lead not found' });
+    if (!current || !canAccessLead(req, current.assignedTo)) return res.status(404).json({ error: 'Lead not found' });
+    // An agent may not hand a lead to someone else (which would also hide it from them);
+    // only managers can reassign.
+    if (!isManager(req) && assignedTo !== undefined && assignedTo !== current.assignedTo) {
+      return res.status(403).json({ error: 'רק מנהל יכול לשנות שיוך נציג' });
+    }
 
     const updateData: Record<string, unknown> = {};
     if (name !== undefined) updateData.name = name;
@@ -160,7 +169,16 @@ leadsRouter.patch('/:id', async (req: Request, res: Response) => {
     }
 
     const io: SocketIOServer = req.app.get('io');
-    io.to(tenantId).emit(SOCKET_EVENTS.LEAD_UPDATED, lead);
+    // Notify managers + the (new) assignee. On reassignment also tell the previous
+    // assignee's room (so the lead disappears for them) and push a lead:created to the
+    // new assignee's room so it surfaces live in their list.
+    emitScoped(io, tenantId, lead.assignedTo, SOCKET_EVENTS.LEAD_UPDATED, lead);
+    if (current.assignedTo && current.assignedTo !== lead.assignedTo) {
+      emitScoped(io, tenantId, current.assignedTo, SOCKET_EVENTS.LEAD_UPDATED, lead);
+    }
+    if (lead.assignedTo && lead.assignedTo !== current.assignedTo) {
+      emitScoped(io, tenantId, lead.assignedTo, SOCKET_EVENTS.LEAD_CREATED, lead);
+    }
 
     return res.json(lead);
   } catch (error) {
@@ -184,6 +202,10 @@ leadsRouter.post('/', async (req: Request, res: Response) => {
     const existing = await prisma.lead.findFirst({ where: { tenantId, phone: normalizedPhone } });
     if (existing) return res.status(409).json({ error: 'ליד עם מספר זה כבר קיים', lead: existing });
 
+    // An agent's manually-created lead is auto-assigned to them (they can't create it
+    // for another agent); a manager may assign freely.
+    const finalAssignedTo = isManager(req) ? (assignedTo || null) : req.user!.username;
+
     const lead = await prisma.lead.create({
       data: {
         tenantId,
@@ -193,7 +215,7 @@ leadsRouter.post('/', async (req: Request, res: Response) => {
         company: company?.trim() || null,
         status: (status as LeadStatus) ?? 'NEW',
         priority: (priority as Priority) ?? 'Med',
-        assignedTo: assignedTo || null,
+        assignedTo: finalAssignedTo,
         internalNotes: internalNotes || null,
         tags: tags ?? [],
       },
@@ -203,7 +225,7 @@ leadsRouter.post('/', async (req: Request, res: Response) => {
     await triggerAutomations('lead.created', { lead }, tenantId);
 
     const io: SocketIOServer = req.app.get('io');
-    io.to(tenantId).emit(SOCKET_EVENTS.LEAD_CREATED, lead);
+    emitScoped(io, tenantId, lead.assignedTo, SOCKET_EVENTS.LEAD_CREATED, lead);
 
     return res.status(201).json(lead);
   } catch (error) {
@@ -279,7 +301,7 @@ leadsRouter.delete('/:id', async (req: Request, res: Response) => {
   try {
     const tenantId = req.user!.tenantId;
     const lead = await prisma.lead.findFirst({ where: { id: req.params.id, tenantId } });
-    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+    if (!lead || !canAccessLead(req, lead.assignedTo)) return res.status(404).json({ error: 'Lead not found' });
     await prisma.lead.delete({ where: { id: req.params.id } });
     return res.status(204).send();
   } catch (error) {

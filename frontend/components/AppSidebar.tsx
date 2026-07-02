@@ -42,11 +42,16 @@ export function AppSidebar({
   onLogout: () => void;
 }) {
   const roleLabel = role ? ROLE_LABELS[role] ?? role : '';
-  const items = NAV.map(({ view, label, icon: Icon }) => ({
-    key: view,
-    label,
-    icon: <Icon size={16} className="flex-shrink-0" />,
-  }));
+  // The company dashboard is a manager overview — hide it from plain agents, who
+  // only work with their own assigned conversations.
+  const isManager = role === 'ADMIN' || role === 'SUPER_ADMIN';
+  const items = NAV
+    .filter(({ view }) => isManager || view !== 'dashboard')
+    .map(({ view, label, icon: Icon }) => ({
+      key: view,
+      label,
+      icon: <Icon size={16} className="flex-shrink-0" />,
+    }));
 
   return (
     <Sidebar

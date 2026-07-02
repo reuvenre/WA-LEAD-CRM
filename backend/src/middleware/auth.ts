@@ -47,3 +47,21 @@ export function requireSuperAdmin(req: Request, res: Response, next: NextFunctio
   }
   return next();
 }
+
+// ─── Per-agent visibility (RBAC) ──────────────────────────────────────────────
+// Managers (ADMIN / SUPER_ADMIN) see every conversation in the tenant. A plain
+// AGENT sees only leads assigned to them (Lead.assignedTo === their username).
+export function isManager(req: Request): boolean {
+  return req.user!.role === 'ADMIN' || req.user!.role === 'SUPER_ADMIN';
+}
+
+// A Prisma `where` fragment restricting leads to what the caller may see.
+// Managers → {} (no restriction); agents → only their assigned leads.
+export function leadScope(req: Request): Record<string, unknown> {
+  return isManager(req) ? {} : { assignedTo: req.user!.username };
+}
+
+// Whether the caller may act on a specific lead, given that lead's assignedTo.
+export function canAccessLead(req: Request, assignedTo: string | null): boolean {
+  return isManager(req) || assignedTo === req.user!.username;
+}

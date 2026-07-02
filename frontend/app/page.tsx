@@ -41,7 +41,10 @@ export default function CRMPage() {
   const [loadingLeads, setLoadingLeads] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
-  const [viewMode, setViewMode] = useState<ViewMode>('dashboard');
+  // Agents open on WhatsApp (their conversations); managers open on the dashboard.
+  const [viewMode, setViewMode] = useState<ViewMode>(
+    () => (decodeToken()?.role === 'AGENT' ? 'chat' : 'dashboard')
+  );
   const [showAddLead, setShowAddLead] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showSuperAdmin, setShowSuperAdmin] = useState(false);

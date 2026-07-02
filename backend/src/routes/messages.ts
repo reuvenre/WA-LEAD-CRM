@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
-import { SOCKET_EVENTS } from '../socket';
+import { SOCKET_EVENTS, emitScoped } from '../socket';
+import { canAccessLead } from '../middleware/auth';
 import { Server as SocketIOServer } from 'socket.io';
 
 export const messagesRouter = Router();
@@ -9,6 +10,9 @@ export const messagesRouter = Router();
 messagesRouter.get('/:leadId', async (req: Request, res: Response) => {
   try {
     const tenantId = req.user!.tenantId;
+    // Only expose a conversation the caller may see (their own lead, or any if manager).
+    const lead = await prisma.lead.findFirst({ where: { id: req.params.leadId, tenantId } });
+    if (!lead || !canAccessLead(req, lead.assignedTo)) return res.status(404).json({ error: 'Lead not found' });
     const messages = await prisma.message.findMany({
       where: { leadId: req.params.leadId, tenantId },
       orderBy: { timestamp: 'asc' },
@@ -29,7 +33,7 @@ messagesRouter.post('/send', async (req: Request, res: Response) => {
     if (!leadId || !content) return res.status(400).json({ error: 'leadId and content are required' });
 
     const lead = await prisma.lead.findFirst({ where: { id: leadId, tenantId } });
-    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+    if (!lead || !canAccessLead(req, lead.assignedTo)) return res.status(404).json({ error: 'Lead not found' });
 
     // Green API requires a digits-only number (chatId = <phone>@c.us). Reject leads
     // without a valid phone here so the user gets a clear message instead of an opaque
@@ -63,7 +67,7 @@ messagesRouter.post('/send', async (req: Request, res: Response) => {
     await prisma.lead.update({ where: { id: leadId }, data: { lastMessageAt: new Date() } });
 
     const io: SocketIOServer = req.app.get('io');
-    io.to(tenantId).emit(SOCKET_EVENTS.NEW_MESSAGE, message);
+    emitScoped(io, tenantId, lead.assignedTo, SOCKET_EVENTS.NEW_MESSAGE, message);
 
     return res.json({ message, result });
   } catch (error) {
@@ -88,7 +92,7 @@ messagesRouter.post('/send-file', async (req: Request, res: Response) => {
     }
 
     const lead = await prisma.lead.findFirst({ where: { id: leadId, tenantId } });
-    if (!lead) return res.status(404).json({ error: 'Lead not found' });
+    if (!lead || !canAccessLead(req, lead.assignedTo)) return res.status(404).json({ error: 'Lead not found' });
 
     const phone = (lead.phone ?? '').replace(/\D/g, '');
     if (!phone) {
@@ -129,7 +133,7 @@ messagesRouter.post('/send-file', async (req: Request, res: Response) => {
     await prisma.lead.update({ where: { id: leadId }, data: { lastMessageAt: new Date() } });
 
     const io: SocketIOServer = req.app.get('io');
-    io.to(tenantId).emit(SOCKET_EVENTS.NEW_MESSAGE, message);
+    emitScoped(io, tenantId, lead.assignedTo, SOCKET_EVENTS.NEW_MESSAGE, message);
 
     return res.json({ message, result });
   } catch (error) {

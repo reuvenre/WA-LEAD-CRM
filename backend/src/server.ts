@@ -17,7 +17,7 @@ import { superAdminRouter } from './routes/superAdmin';
 import { tenantRouter } from './routes/tenant';
 import { googleRouter } from './routes/google';
 import { requireAuth } from './middleware/auth';
-import { initSocket } from './socket';
+import { initSocket, agentRoom } from './socket';
 import type { AuthPayload } from './middleware/auth';
 import { JWT_SECRET } from './lib/config';
 
@@ -93,8 +93,16 @@ io.on('connection', (socket) => {
     try {
       const payload = jwt.verify(token, JWT_SECRET) as AuthPayload;
       if (payload.tenantId && payload.step !== '2fa_pending') {
-        socket.join(payload.tenantId);
-        console.log(`🔌 Socket joined room: ${payload.tenantId}`);
+        const isManager = payload.role === 'ADMIN' || payload.role === 'SUPER_ADMIN';
+        if (isManager) {
+          // Managers see the whole tenant.
+          socket.join(payload.tenantId);
+          console.log(`🔌 Socket joined tenant room: ${payload.tenantId}`);
+        } else {
+          // Agents only get events for their own conversations.
+          socket.join(agentRoom(payload.tenantId, payload.username));
+          console.log(`🔌 Socket joined agent room for ${payload.username}`);
+        }
       }
     } catch {
       // Invalid token — socket still connects but not in any room

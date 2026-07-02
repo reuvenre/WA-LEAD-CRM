@@ -1,10 +1,14 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { isManager } from '../middleware/auth';
 
 export const analyticsRouter = Router();
 
 analyticsRouter.get('/overview', async (req: Request, res: Response) => {
   try {
+    // The overview is a company-wide dashboard (per-agent leaderboard, all leads) —
+    // managers only. Agents work from their own scoped lists instead.
+    if (!isManager(req)) return res.status(403).json({ error: 'גישה מוגבלת למנהלים' });
     const tenantId = req.user!.tenantId;
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
