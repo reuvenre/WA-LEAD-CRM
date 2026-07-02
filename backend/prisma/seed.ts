@@ -3,6 +3,12 @@ import { PrismaClient, LeadStatus, Priority, MessageDirection } from '@prisma/cl
 const prisma = new PrismaClient();
 
 async function main() {
+  // Hard stop: this seed wipes messages/templates/leads with UNSCOPED deleteMany —
+  // running it against production would destroy every tenant's data.
+  if (process.env.NODE_ENV === 'production') {
+    throw new Error('Refusing to run destructive seed against a production database.');
+  }
+
   await prisma.message.deleteMany();
   await prisma.template.deleteMany();
   await prisma.lead.deleteMany();

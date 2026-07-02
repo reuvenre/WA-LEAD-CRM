@@ -4,15 +4,10 @@ export function initSocket(io: SocketIOServer) {
   io.on('connection', (socket: Socket) => {
     console.log(`🔌 Client connected: ${socket.id}`);
 
-    // Join a lead-specific room for targeted updates
-    socket.on('join:lead', (leadId: string) => {
-      socket.join(`lead:${leadId}`);
-      console.log(`   Socket ${socket.id} joined room lead:${leadId}`);
-    });
-
-    socket.on('leave:lead', (leadId: string) => {
-      socket.leave(`lead:${leadId}`);
-    });
+    // NOTE: all realtime events are emitted to the per-tenant room (io.to(tenantId)),
+    // which is joined after JWT verification in server.ts. We deliberately do NOT expose
+    // an unauthenticated `join:lead` room here — it would let any socket subscribe to an
+    // arbitrary lead id with no tenant check.
 
     socket.on('disconnect', () => {
       console.log(`🔌 Client disconnected: ${socket.id}`);

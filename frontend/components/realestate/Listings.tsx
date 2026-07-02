@@ -34,6 +34,7 @@ export default function Listings() {
   const [cf, setCf] = useState({ ...NEW_CLIENT })
   const [matchId, setMatchId] = useState('')
   const [editing, setEditing] = useState<Listing | null>(null)
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
     Promise.all([loadListings(), loadClients()])
@@ -88,22 +89,38 @@ export default function Listings() {
       renovated: nl.renovated, entry: editing?.entry || 'מיידי', status: nl.status,
       agent: editing?.agent || 'משרד', listed_by: nl.listed_by, source: editing?.source || 'CRM (ידני)', sourceUrl: nl.sourceUrl,
     }
-    if (editing) {
-      const rec = await updateListing(editing.id, payload)
-      setListings(prev => prev.map(l => l.id === editing.id ? rec : l))
-      setToast(`"${rec.title}" עודכנה`)
-    } else {
-      const rec = await addListing(payload)
-      setListings(prev => [rec, ...prev])
-      setToast(`הדירה "${rec.title}" נוספה`)
+    if (saving) return
+    setSaving(true)
+    try {
+      if (editing) {
+        const rec = await updateListing(editing.id, payload)
+        setListings(prev => prev.map(l => l.id === editing.id ? rec : l))
+        setToast(`"${rec.title}" עודכנה`)
+      } else {
+        const rec = await addListing(payload)
+        setListings(prev => [rec, ...prev])
+        setToast(`הדירה "${rec.title}" נוספה`)
+      }
+      closeModal()
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'שגיאה בשמירה')
+    } finally {
+      setSaving(false)
     }
-    closeModal()
   }
 
   const submitClient = async (e: React.FormEvent) => {
     e.preventDefault()
-    const rec = await addClient({ name: cf.name, phone: cf.phone, city: cf.city, rooms: Number(cf.rooms) || 0, budgetMax: Number(cf.budgetMax) || 0, deliveryBy: `${cf.deliveryYear}-Q4` })
-    setClients(prev => [...prev, rec]); setMatchId(rec.id); setShowClient(false); setCf({ ...NEW_CLIENT }); setToast(`הלקוח "${rec.name}" נוסף`)
+    if (saving) return
+    setSaving(true)
+    try {
+      const rec = await addClient({ name: cf.name, phone: cf.phone, city: cf.city, rooms: Number(cf.rooms) || 0, budgetMax: Number(cf.budgetMax) || 0, deliveryBy: `${cf.deliveryYear}-Q4` })
+      setClients(prev => [...prev, rec]); setMatchId(rec.id); setShowClient(false); setCf({ ...NEW_CLIENT }); setToast(`הלקוח "${rec.name}" נוסף`)
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'שגיאה בשמירה')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const client = clients.find(c => c.id === matchId)
@@ -254,7 +271,7 @@ export default function Listings() {
               <ExternalLink size={15} /> צפה במודעה המקורית
             </a>
           )}
-          <SubmitButton>{editing ? 'שמור שינויים' : 'הוסף דירה'}</SubmitButton>
+          <SubmitButton disabled={saving}>{saving ? 'שומר…' : editing ? 'שמור שינויים' : 'הוסף דירה'}</SubmitButton>
         </form>
       </Modal>
 
@@ -268,7 +285,7 @@ export default function Listings() {
             <FormRow label="חדרים"><SelectInput value={cf.rooms} onChange={e => setCf(f => ({ ...f, rooms: e.target.value }))}>{[2, 3, 4, 5].map(r => <option key={r} value={r}>{r} חדרים</option>)}</SelectInput></FormRow>
             <FormRow label="תקציב מקס׳ (₪)"><TextInput type="number" value={cf.budgetMax} onChange={e => setCf(f => ({ ...f, budgetMax: e.target.value }))} required /></FormRow>
           </div>
-          <SubmitButton>הוסף לקוח</SubmitButton>
+          <SubmitButton disabled={saving}>{saving ? 'שומר…' : 'הוסף לקוח'}</SubmitButton>
         </form>
       </Modal>
 

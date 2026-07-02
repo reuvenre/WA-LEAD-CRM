@@ -26,6 +26,7 @@ export async function triggerAutomations(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ event, payload, timestamp: new Date().toISOString() }),
+        signal: AbortSignal.timeout(5000), // a slow endpoint must not tie up sockets
       }).catch((err) => console.warn(`Automation webhook failed (${webhook.name}):`, err));
     }
   } catch {

@@ -35,7 +35,7 @@ export function AddLeadModal({ onClose, onLeadAdded, onLeadsImported }: AddLeadM
         {/* Tabs */}
         <div className="flex border-b border-surface-border">
           <TabBtn active={tab === 'manual'} onClick={() => setTab('manual')} icon={<UserPlus className="w-3.5 h-3.5" />} label="הוספה ידנית" />
-          <TabBtn active={tab === 'import'} onClick={() => setTab('import')} icon={<Upload className="w-3.5 h-3.5" />} label="ייבוא CSV / Excel" />
+          <TabBtn active={tab === 'import'} onClick={() => setTab('import')} icon={<Upload className="w-3.5 h-3.5" />} label="ייבוא CSV" />
         </div>
 
         {tab === 'manual' ? (
@@ -155,8 +155,10 @@ function ImportForm({ onClose, onLeadsImported }: { onClose: () => void; onLeads
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = (f: File) => {
-    if (!f.name.match(/\.(csv|xlsx|xls)$/i)) {
-      setError('אנא בחר קובץ CSV או Excel');
+    // Only CSV is supported — .xlsx/.xls are ZIP binaries that file.text()+parseCSV
+    // cannot read. Accepting them produced a misleading "empty file" error.
+    if (!f.name.match(/\.csv$/i)) {
+      setError('אנא בחר קובץ CSV (יש לייצא מ-Excel כ-CSV)');
       return;
     }
     setFile(f);
@@ -228,10 +230,10 @@ function ImportForm({ onClose, onLeadsImported }: { onClose: () => void; onLeads
         ) : (
           <>
             <p className="text-sm text-slate-500 font-medium">גרור קובץ לכאן או לחץ לבחירה</p>
-            <p className="text-xs text-slate-400 mt-1">CSV, XLS, XLSX</p>
+            <p className="text-xs text-slate-400 mt-1">CSV בלבד</p>
           </>
         )}
-        <input ref={inputRef} type="file" accept=".csv,.xlsx,.xls" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+        <input ref={inputRef} type="file" accept=".csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
       </div>
 
       {error && (

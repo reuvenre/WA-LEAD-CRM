@@ -18,6 +18,7 @@ export default function REClients() {
   const [show, setShow] = useState(false)
   const [editing, setEditing] = useState<ClientProfile | null>(null)
   const [f, setF] = useState({ ...blank })
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => { loadClients().then(c => setClients([...c])).finally(() => setLoading(false)) }, [])
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t) }, [toast])
@@ -36,20 +37,28 @@ export default function REClients() {
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
+    if (saving) return
     const payload: Omit<ClientProfile, 'id'> = {
       name: f.name.trim(), phone: f.phone.trim(), city: f.city.trim(),
       rooms: Number(f.rooms) || 0, budgetMax: Number(f.budgetMax) || 0, deliveryBy: `${f.deliveryYear}-Q4`,
     }
-    if (editing) {
-      const rec = await updateClient(editing.id, payload)
-      setClients(prev => prev.map(c => c.id === editing.id ? rec : c))
-      setToast(`"${rec.name}" עודכן`)
-    } else {
-      const rec = await addClient(payload)
-      setClients(prev => [...prev, rec])
-      setToast(`הלקוח "${rec.name}" נוסף`)
+    setSaving(true)
+    try {
+      if (editing) {
+        const rec = await updateClient(editing.id, payload)
+        setClients(prev => prev.map(c => c.id === editing.id ? rec : c))
+        setToast(`"${rec.name}" עודכן`)
+      } else {
+        const rec = await addClient(payload)
+        setClients(prev => [...prev, rec])
+        setToast(`הלקוח "${rec.name}" נוסף`)
+      }
+      close()
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'שגיאה בשמירה')
+    } finally {
+      setSaving(false)
     }
-    close()
   }
 
   const remove = async (c: ClientProfile) => {
@@ -137,7 +146,7 @@ export default function REClients() {
             <FormRow label="תקציב מקס׳ (₪)"><TextInput type="number" value={f.budgetMax} onChange={e => setF(s => ({ ...s, budgetMax: e.target.value }))} required /></FormRow>
             <FormRow label="מסירה עד (שנה)"><SelectInput value={f.deliveryYear} onChange={e => setF(s => ({ ...s, deliveryYear: e.target.value }))}>{YEARS.map(y => <option key={y} value={y}>{y}</option>)}</SelectInput></FormRow>
           </div>
-          <SubmitButton>{editing ? 'שמור שינויים' : 'הוסף לקוח'}</SubmitButton>
+          <SubmitButton disabled={saving}>{saving ? 'שומר…' : editing ? 'שמור שינויים' : 'הוסף לקוח'}</SubmitButton>
         </form>
       </Modal>
 

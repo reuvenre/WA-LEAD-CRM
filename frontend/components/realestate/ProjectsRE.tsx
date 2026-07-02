@@ -49,6 +49,7 @@ export default function Projects() {
   const [status, setStatus] = useState<'all' | 'existing' | 'future'>('all')
   const [rooms, setRooms] = useState<number | null>(null)
   const [matchClientId, setMatchClientId] = useState('')
+  const [saving, setSaving] = useState(false)
   const [clients, setClients] = useState<ClientProfile[]>([])
   const [showAddProj, setShowAddProj] = useState(false)
   const [showAddClient, setShowAddClient] = useState(false)
@@ -96,30 +97,46 @@ export default function Projects() {
       amenities: [], urban_renewal: pf.urban_renewal,
       sales_office: 'לא ידוע', source: 'CRM (ידני)', source_tier: 5,
     }
-    if (editId) {
-      const rec = await updateProject(editId, payload)
-      setProjects(prev => prev.map(p => p.id === editId ? rec : p))
-      setToast(`הפרויקט "${rec.project_name}" עודכן`)
-    } else {
-      const rec = await addProject(payload)
-      setProjects(prev => [rec, ...prev])
-      setToast(`הפרויקט "${rec.project_name}" נוסף ל-CRM`)
+    if (saving) return
+    setSaving(true)
+    try {
+      if (editId) {
+        const rec = await updateProject(editId, payload)
+        setProjects(prev => prev.map(p => p.id === editId ? rec : p))
+        setToast(`הפרויקט "${rec.project_name}" עודכן`)
+      } else {
+        const rec = await addProject(payload)
+        setProjects(prev => [rec, ...prev])
+        setToast(`הפרויקט "${rec.project_name}" נוסף ל-CRM`)
+      }
+      closeProjModal()
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'שגיאה בשמירה')
+    } finally {
+      setSaving(false)
     }
-    closeProjModal()
   }
 
   const submitClient = async (e: React.FormEvent) => {
     e.preventDefault()
-    const rec = await addClient({
-      name: cf.name, phone: cf.phone, city: cf.city,
-      rooms: Number(cf.rooms) || 0, budgetMax: Number(cf.budgetMax) || 0,
-      deliveryBy: `${cf.deliveryYear}-Q4`,
-    })
-    setClients(prev => [...prev, rec])
-    setMatchClientId(rec.id)
-    setShowAddClient(false)
-    setCf({ ...NEW_CLIENT })
-    setToast(`הלקוח "${rec.name}" נוסף`)
+    if (saving) return
+    setSaving(true)
+    try {
+      const rec = await addClient({
+        name: cf.name, phone: cf.phone, city: cf.city,
+        rooms: Number(cf.rooms) || 0, budgetMax: Number(cf.budgetMax) || 0,
+        deliveryBy: `${cf.deliveryYear}-Q4`,
+      })
+      setClients(prev => [...prev, rec])
+      setMatchClientId(rec.id)
+      setShowAddClient(false)
+      setCf({ ...NEW_CLIENT })
+      setToast(`הלקוח "${rec.name}" נוסף`)
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'שגיאה בשמירה')
+    } finally {
+      setSaving(false)
+    }
   }
 
   useEffect(() => {
@@ -138,10 +155,15 @@ export default function Projects() {
 
   const refresh = async () => {
     setFetching(true)
-    const r = await fetchProjects({ city, status, rooms })
-    setProjects([...PROJECTS])
-    setFetching(false)
-    setToast(`רוענן מהשרת — ${r.length} פרויקטים תואמי סינון`)
+    try {
+      const r = await fetchProjects({ city, status, rooms })
+      setProjects([...PROJECTS])
+      setToast(`רוענן מהשרת — ${r.length} פרויקטים תואמי סינון`)
+    } catch {
+      setToast('רענון הפרויקטים נכשל')
+    } finally {
+      setFetching(false) // guarantee the full-screen overlay always clears
+    }
   }
 
   // Data-quality flags (skill Step 6)
@@ -213,7 +235,7 @@ export default function Projects() {
             <input type="checkbox" checked={pf.urban_renewal} onChange={e => setPf(f => ({ ...f, urban_renewal: e.target.checked }))} />
             התחדשות עירונית (תמ״א 38 / פינוי-בינוי)
           </label>
-          <SubmitButton>{editId ? 'שמור שינויים' : 'הוסף פרויקט'}</SubmitButton>
+          <SubmitButton disabled={saving}>{saving ? 'שומר…' : editId ? 'שמור שינויים' : 'הוסף פרויקט'}</SubmitButton>
         </form>
       </Modal>
 
@@ -235,7 +257,7 @@ export default function Projects() {
             <FormRow label="תקציב מקס׳ (₪)"><TextInput type="number" value={cf.budgetMax} onChange={e => setCf(f => ({ ...f, budgetMax: e.target.value }))} placeholder="3500000" required /></FormRow>
             <FormRow label="מסירה עד שנת"><TextInput type="number" value={cf.deliveryYear} onChange={e => setCf(f => ({ ...f, deliveryYear: e.target.value }))} /></FormRow>
           </div>
-          <SubmitButton>הוסף לקוח</SubmitButton>
+          <SubmitButton disabled={saving}>{saving ? 'שומר…' : 'הוסף לקוח'}</SubmitButton>
         </form>
       </Modal>
 

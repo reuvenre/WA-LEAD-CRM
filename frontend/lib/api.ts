@@ -48,6 +48,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     },
   });
   if (!res.ok) {
+    // An expired/invalid token must not leave the app in a broken half-authenticated
+    // shell where every call silently fails — clear it and bounce to login.
+    if (res.status === 401 && typeof window !== 'undefined') {
+      localStorage.removeItem('crm_token');
+      if (!window.location.pathname.startsWith('/login')) window.location.href = '/login';
+    }
     const err = await res.json().catch(() => ({})) as { error?: string };
     throw new Error(err.error ?? `HTTP ${res.status}`);
   }
@@ -164,7 +170,7 @@ export const api = {
   tenant: {
     settings: () => request<{
       id: string; name: string; email: string; plan: string;
-      greenApiInstanceId: string | null; greenApiToken: string | null;
+      greenApiInstanceId: string | null; greenApiTokenSet: boolean;
       greenApiWebhookUrl: string | null;
     }>('/api/tenant/settings'),
     updateGreenApi: (data: { greenApiInstanceId: string; greenApiToken: string; greenApiWebhookUrl?: string }) =>

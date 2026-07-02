@@ -67,6 +67,10 @@ export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpda
     const file = e.target.files?.[0];
     e.target.value = ''; // reset so picking the same file again re-fires onChange
     if (!file || uploading) return;
+    // Validate up front — avoid reading a huge file into a base64 string (freezes the
+    // tab) only to have the server reject it. Backend cap is 16MB.
+    if (file.size === 0) { alert('הקובץ ריק'); return; }
+    if (file.size > 16 * 1024 * 1024) { alert('הקובץ גדול מדי (מקסימום 16MB)'); return; }
     setUploading(true);
     try {
       await onSendFile(file);
@@ -220,6 +224,13 @@ export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpda
 
 // ─── Message Bubble ────────────────────────────────────────────────────────
 
+// mediaUrl can originate from an inbound WhatsApp webhook (attacker-influenced), so
+// only render http(s) or local blob: previews — never javascript:/data: in src/href.
+function safeMediaUrl(url?: string | null): string | undefined {
+  if (!url) return undefined;
+  return /^(https?:|blob:)/i.test(url) ? url : undefined;
+}
+
 function MessageBubble({
   message,
   showTime,
@@ -228,6 +239,7 @@ function MessageBubble({
   showTime: boolean;
 }) {
   const isOutbound = message.direction === 'outbound';
+  const mediaSrc = safeMediaUrl(message.mediaUrl);
 
   return (
     <div
@@ -244,18 +256,18 @@ function MessageBubble({
             : 'bg-brand-600 text-white rounded-tl-sm'
         )}
       >
-        {message.type === 'image' && message.mediaUrl && (
-          <a href={message.mediaUrl} target="_blank" rel="noopener noreferrer" className="block">
+        {message.type === 'image' && mediaSrc && (
+          <a href={mediaSrc} target="_blank" rel="noopener noreferrer" className="block">
             <img
-              src={message.mediaUrl}
+              src={mediaSrc}
               alt={message.fileName ?? 'תמונה'}
               className="rounded-lg max-w-full max-h-64 object-cover mb-1"
             />
           </a>
         )}
-        {message.type === 'document' && message.mediaUrl && (
+        {message.type === 'document' && mediaSrc && (
           <a
-            href={message.mediaUrl}
+            href={mediaSrc}
             target="_blank"
             rel="noopener noreferrer"
             className={cn(

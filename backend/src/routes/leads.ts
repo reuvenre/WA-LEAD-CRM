@@ -14,7 +14,10 @@ leadsRouter.get('/', async (req: Request, res: Response) => {
   try {
     const tenantId = req.user!.tenantId;
     const { status, search, tags, projectId, page = '1', limit = '50' } = req.query;
-    const skip = (parseInt(page as string) - 1) * parseInt(limit as string);
+    // Clamp pagination so a huge/negative/NaN limit can't run an unbounded query or 500.
+    const take = Math.min(Math.max(parseInt(limit as string) || 50, 1), 100);
+    const pageN = Math.max(parseInt(page as string) || 1, 1);
+    const skip = (pageN - 1) * take;
 
     const where: Record<string, unknown> = { tenantId };
 
@@ -33,13 +36,13 @@ leadsRouter.get('/', async (req: Request, res: Response) => {
         where,
         orderBy: { lastMessageAt: 'desc' },
         skip,
-        take: parseInt(limit as string),
+        take,
         include: { messages: { orderBy: { timestamp: 'desc' }, take: 1 }, project: true },
       }),
       prisma.lead.count({ where }),
     ]);
 
-    return res.json({ leads, total, page: parseInt(page as string) });
+    return res.json({ leads, total, page: pageN });
   } catch (error) {
     console.error('GET /leads error:', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -51,6 +54,7 @@ leadsRouter.get('/calendar', async (req: Request, res: Response) => {
   try {
     const tenantId = req.user!.tenantId;
     const month = (req.query.month as string) || new Date().toISOString().slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(month)) return res.status(400).json({ error: 'פורמט חודש שגוי (YYYY-MM)' });
     const [year, mon] = month.split('-').map(Number);
     const start = new Date(year, mon - 1, 1);
     const end = new Date(year, mon, 1);
@@ -109,12 +113,28 @@ leadsRouter.patch('/:id', async (req: Request, res: Response) => {
     if (name !== undefined) updateData.name = name;
     if (email !== undefined) updateData.email = email;
     if (company !== undefined) updateData.company = company;
-    if (status !== undefined) updateData.status = status as LeadStatus;
-    if (priority !== undefined) updateData.priority = priority as Priority;
+    if (status !== undefined) {
+      if (!Object.values(LeadStatus).includes(status)) return res.status(400).json({ error: 'סטטוס לא תקין' });
+      updateData.status = status as LeadStatus;
+    }
+    if (priority !== undefined) {
+      if (!Object.values(Priority).includes(priority)) return res.status(400).json({ error: 'עדיפות לא תקינה' });
+      updateData.priority = priority as Priority;
+    }
     if (internalNotes !== undefined) updateData.internalNotes = internalNotes;
     if (assignedTo !== undefined) updateData.assignedTo = assignedTo;
     if (tags !== undefined) updateData.tags = tags;
-    if (projectId !== undefined) updateData.projectId = projectId || null;
+    if (projectId !== undefined) {
+      if (projectId) {
+        // Verify the project belongs to THIS tenant — Prisma's FK only checks existence,
+        // so without this a lead could be linked to another tenant's project.
+        const proj = await prisma.project.findFirst({ where: { id: projectId, tenantId } });
+        if (!proj) return res.status(400).json({ error: 'פרויקט לא נמצא' });
+        updateData.projectId = projectId;
+      } else {
+        updateData.projectId = null;
+      }
+    }
     if (meetingDate !== undefined) updateData.meetingDate = meetingDate ? new Date(meetingDate) : null;
     if (meetingNotes !== undefined) updateData.meetingNotes = meetingNotes;
 
@@ -156,6 +176,8 @@ leadsRouter.post('/', async (req: Request, res: Response) => {
     const { name, phone, email, company, status, priority, assignedTo, internalNotes, tags } = req.body;
 
     if (!name || !phone) return res.status(400).json({ error: 'שם וטלפון הם שדות חובה' });
+    if (status !== undefined && !Object.values(LeadStatus).includes(status)) return res.status(400).json({ error: 'סטטוס לא תקין' });
+    if (priority !== undefined && !Object.values(Priority).includes(priority)) return res.status(400).json({ error: 'עדיפות לא תקינה' });
 
     const normalizedPhone = normalizePhone(phone);
 

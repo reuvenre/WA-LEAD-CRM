@@ -1,10 +1,23 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { SOCKET_EVENTS } from '../socket';
 import { Server as SocketIOServer } from 'socket.io';
 import { logActivity } from '../lib/activity';
 
 export const webhookRouter = Router();
+
+// Verify the shared secret embedded in the webhook URL (?token=…). Once a tenant has
+// a secret, forged payloads (from anyone who merely knows the numeric instanceId) are
+// rejected. Legacy tenants without a secret are allowed for backward-compat until they
+// re-save Green API settings (which mints + activates the secret). Constant-time compare.
+function webhookAuthorized(req: Request, secret: string | null): boolean {
+  if (!secret) return true; // not yet configured — don't break the live webhook
+  const provided = String(req.query.token ?? '');
+  const a = Buffer.from(provided);
+  const b = Buffer.from(secret);
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
 
 // ─── Shared processing logic ──────────────────────────────────────────────────
 async function processWebhook(req: Request, res: Response, tenantId: string, tenantName: string) {
@@ -82,14 +95,22 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
   // have the file itself.
   if (!content && !mediaUrl) return res.status(200).json({ received: true });
 
-  // Upsert lead — scoped to this tenant
-  const existingLead = await prisma.lead.findFirst({ where: { tenantId, phone } });
+  // Idempotency: Green API delivers at-least-once and retries on non-2xx, so drop a
+  // message we've already stored (matched by its idMessage).
+  const externalId: string | null = body?.idMessage ? String(body.idMessage) : null;
+  if (externalId) {
+    const dup = await prisma.message.findFirst({ where: { tenantId, externalId } });
+    if (dup) return res.status(200).json({ received: true, duplicate: true });
+  }
 
-  const lead = existingLead
-    ? await prisma.lead.update({ where: { id: existingLead.id }, data: { lastMessageAt: new Date() } })
-    : await prisma.lead.create({
-        data: { tenantId, phone, name: contactName, lastMessageAt: new Date() },
-      });
+  // Upsert lead atomically — two messages from a brand-new number arriving together
+  // would otherwise both miss on findFirst and collide on the (tenantId, phone) unique.
+  const existingLead = await prisma.lead.findFirst({ where: { tenantId, phone } });
+  const lead = await prisma.lead.upsert({
+    where: { tenantId_phone: { tenantId, phone } },
+    update: { lastMessageAt: new Date() },
+    create: { tenantId, phone, name: contactName, lastMessageAt: new Date() },
+  });
 
   if (!existingLead) {
     await logActivity(lead.id, tenantId, 'ליד נוצר', isIncoming ? 'נוצר מהודעת וואצאפ נכנסת' : 'נוצר מהודעת וואצאפ יוצאת (מהטלפון)');
@@ -103,6 +124,7 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
       type: msgType,
       mediaUrl,
       fileName,
+      externalId,
       direction: isIncoming ? 'inbound' : 'outbound',
       status: isIncoming ? 'delivered' : 'sent',
     },
@@ -132,6 +154,11 @@ webhookRouter.post('/:instanceId', async (req: Request, res: Response) => {
       return res.status(200).json({ received: true });
     }
 
+    if (!webhookAuthorized(req, tenant.webhookSecret)) {
+      console.warn(`⚠️ Webhook rejected (bad/missing token) for instanceId: ${instanceId}`);
+      return res.status(401).json({ error: 'unauthorized' });
+    }
+
     return processWebhook(req, res, tenant.id, tenant.name);
   } catch (error) {
     console.error('Webhook error:', error);
@@ -159,6 +186,10 @@ webhookRouter.post('/', async (req: Request, res: Response) => {
         console.warn(`⚠️ Webhook for unknown instanceId (from body): ${bodyInstanceId}`);
         return res.status(200).json({ received: true });
       }
+      if (!webhookAuthorized(req, tenant.webhookSecret)) {
+        console.warn(`⚠️ Webhook rejected (bad/missing token) for instanceId: ${bodyInstanceId}`);
+        return res.status(401).json({ error: 'unauthorized' });
+      }
       return processWebhook(req, res, tenant.id, tenant.name);
     }
 
@@ -175,6 +206,11 @@ webhookRouter.post('/', async (req: Request, res: Response) => {
     if (configured.length > 1) {
       console.warn('⚠️ Webhook without instanceId but multiple tenants configured — cannot attribute safely. Configure the /:instanceId webhook URL per tenant.');
       return res.status(200).json({ received: true });
+    }
+
+    if (!webhookAuthorized(req, configured[0].webhookSecret)) {
+      console.warn('⚠️ Webhook rejected (bad/missing token) on single-tenant fallback');
+      return res.status(401).json({ error: 'unauthorized' });
     }
 
     return processWebhook(req, res, configured[0].id, configured[0].name);

@@ -30,6 +30,29 @@ function signToken(payload: Omit<AuthPayload, 'step'>, expiresIn = '8h') {
   return jwt.sign(payload, JWT_SECRET, { expiresIn } as object);
 }
 
+// ─── In-memory brute-force limiter ────────────────────────────────────────────
+// Keyed by identity (username/email/token), NOT IP — so it's correct behind
+// Railway's proxy without trust-proxy tuning, and can't lock out a whole office
+// sharing one egress IP. Single-instance deploy → in-memory is sufficient.
+const attemptLog = new Map<string, number[]>();
+function tooManyAttempts(key: string, max: number, windowMs: number): boolean {
+  const now = Date.now();
+  const hits = (attemptLog.get(key) ?? []).filter((t) => now - t < windowMs);
+  if (hits.length >= max) { attemptLog.set(key, hits); return true; }
+  hits.push(now);
+  attemptLog.set(key, hits);
+  return false;
+}
+function clearAttempts(key: string) { attemptLog.delete(key); }
+// Opportunistic cleanup so the map can't grow unbounded over a long uptime.
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of attemptLog) {
+    const fresh = v.filter((t) => now - t < 60 * 60 * 1000);
+    if (fresh.length) attemptLog.set(k, fresh); else attemptLog.delete(k);
+  }
+}, 30 * 60 * 1000).unref();
+
 // ─── POST /api/auth/register ──────────────────────────────────────────────────
 // Create a new tenant + admin user
 authRouter.post('/register', async (req: Request, res: Response) => {
@@ -75,6 +98,11 @@ authRouter.post('/login', async (req: Request, res: Response) => {
   const { username, password, companyEmail } = req.body;
   if (!username || !password) return res.status(400).json({ error: 'נדרשים שם משתמש וסיסמה' });
 
+  const rlKey = `login:${String(companyEmail ?? '').trim().toLowerCase()}:${String(username).trim().toLowerCase()}`;
+  if (tooManyAttempts(rlKey, 8, 15 * 60 * 1000)) {
+    return res.status(429).json({ error: 'יותר מדי ניסיונות התחברות. נסה שוב בעוד מספר דקות.' });
+  }
+
   // Usernames are only unique within a tenant (@@unique([tenantId, username])), so a bare
   // username can match multiple tenants. Scope by company email when provided; otherwise
   // only proceed when the username is globally unambiguous, and ask for the company email
@@ -109,6 +137,8 @@ authRouter.post('/login', async (req: Request, res: Response) => {
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) return res.status(401).json({ error: 'שם משתמש או סיסמה שגויים' });
 
+  clearAttempts(rlKey); // correct password — reset the counter
+
   // Check 2FA (per user)
   if (user.totpEnabled && user.totpSecret) {
     const tempToken = jwt.sign(
@@ -137,13 +167,23 @@ authRouter.post('/login/2fa', async (req: Request, res: Response) => {
 
   if (payload.step !== '2fa_pending') return res.status(400).json({ error: 'טוקן לא תקין' });
 
-  const user = await prisma.user.findUnique({ where: { id: payload.userId } });
+  // Throttle TOTP guessing per user (6-digit code is otherwise brute-forceable).
+  const rlKey = `2fa:${payload.userId}`;
+  if (tooManyAttempts(rlKey, 6, 15 * 60 * 1000)) {
+    return res.status(429).json({ error: 'יותר מדי ניסיונות. נסה שוב בעוד מספר דקות.' });
+  }
+
+  const user = await prisma.user.findUnique({ where: { id: payload.userId }, include: { tenant: true } });
   if (!user?.totpSecret) return res.status(400).json({ error: '2FA לא מוגדר' });
+  // Re-check active status — the login password-branch does, but a temp token could
+  // outlive a deactivation.
+  if (!user.active || !user.tenant.active) return res.status(403).json({ error: 'החשבון אינו פעיל. צור קשר עם התמיכה.' });
 
   const valid = speakeasy.totp.verify({ secret: user.totpSecret, encoding: 'base32', token: code, window: 1 });
   if (!valid) return res.status(401).json({ error: 'קוד שגוי — נסה שוב' });
 
-  const token = signToken({ userId: payload.userId, tenantId: payload.tenantId, tenantName: payload.tenantName, username: payload.username, role: payload.role });
+  clearAttempts(rlKey);
+  const token = signToken({ userId: user.id, tenantId: user.tenantId, tenantName: user.tenant.name, username: user.username, role: user.role as AuthPayload['role'] });
   return res.json({ token });
 });
 
@@ -216,6 +256,11 @@ authRouter.post('/forgot-password', async (req: Request, res: Response) => {
   // Always return success to prevent email enumeration
   if (!email?.trim()) return res.json({ success: true, message: 'אם הכתובת קיימת במערכת, נשלח קישור לאיפוס' });
 
+  // Throttle reset-email flooding per address (still returns the uniform success msg).
+  if (tooManyAttempts(`forgot:${email.trim().toLowerCase()}`, 4, 60 * 60 * 1000)) {
+    return res.json({ success: true, message: 'אם הכתובת קיימת במערכת, נשלח קישור לאיפוס' });
+  }
+
   try {
     // Find tenant by email
     const tenant = await prisma.tenant.findFirst({ where: { email: email.trim().toLowerCase() } });
@@ -271,6 +316,10 @@ authRouter.post('/forgot-password', async (req: Request, res: Response) => {
 authRouter.post('/reset-password', async (req: Request, res: Response) => {
   const { token, newPassword } = req.body;
   if (!token || !newPassword) return res.status(400).json({ error: 'חסרים פרטים' });
+
+  if (tooManyAttempts(`reset:${String(token).slice(0, 32)}`, 8, 15 * 60 * 1000)) {
+    return res.status(429).json({ error: 'יותר מדי ניסיונות. נסה שוב בעוד מספר דקות.' });
+  }
 
   const resetToken = await prisma.passwordResetToken.findUnique({ where: { token } });
   if (!resetToken) return res.status(400).json({ error: 'קישור לא תקין' });

@@ -46,7 +46,11 @@ export function LeadDetails({ lead, onUpdate, onDelete }: LeadDetailsProps) {
     setMeetingNotes(lead.meetingNotes ?? '');
     setDirty(false);
     setConfirmDelete(false);
-  }, [lead.id, lead.name, lead.email, lead.company, lead.internalNotes, lead.assignedTo, lead.tags, lead.meetingDate, lead.meetingNotes]);
+    // Reset ONLY when a different lead is selected. Depending on the mutable fields
+    // (esp. lead.tags, a fresh array each render) made every parent update — a priority
+    // click, a socket lead:updated — wipe the user's unsaved edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lead.id]);
 
   // Load projects and users for dropdowns
   useEffect(() => {

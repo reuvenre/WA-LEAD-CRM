@@ -59,12 +59,8 @@ export function useSocket(handlers: SocketEventHandlers, activeLeadId?: string) 
     return () => { socket.disconnect(); };
   }, [token]);
 
-  useEffect(() => {
-    const socket = socketRef.current;
-    if (!socket) return;
-    if (activeLeadId) socket.emit('join:lead', activeLeadId);
-    return () => { if (activeLeadId) socket.emit('leave:lead', activeLeadId); };
-  }, [activeLeadId]);
+  // (Removed the join:lead/leave:lead emits — the server has no authenticated lead
+  // rooms; all realtime updates arrive via the per-tenant room joined at connect.)
 
   const emit = useCallback((event: string, data?: unknown) => {
     socketRef.current?.emit(event, data);

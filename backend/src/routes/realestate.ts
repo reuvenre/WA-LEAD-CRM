@@ -13,6 +13,21 @@ const fail = (res: Response, e: unknown, where: string) => {
   return res.status(500).json({ error: 'Internal server error' });
 };
 
+// Coerce external/user input to a finite number, else a fallback (never NaN — Prisma
+// rejects NaN for Int/Float columns and would 500 the request).
+const finite = (v: unknown, fallback = 0): number => {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : fallback;
+};
+const finiteOrNull = (v: unknown): number | null => {
+  if (v == null) return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+};
+// Only accept plausible Yad2/Madlan https links from the third-party actor; junk → ''.
+const safeListingUrl = (u: unknown): string =>
+  typeof u === 'string' && /^https:\/\/(www\.)?(yad2\.co\.il|madlan\.co\.il)\//i.test(u) ? u : '';
+
 // ─── Deals ────────────────────────────────────────────────────────────────────
 realestateRouter.get('/deals', async (req, res) => {
   try {
@@ -140,15 +155,15 @@ realestateRouter.post('/projects', async (req, res) => {
         expectedDelivery: b.expectedDelivery || null,
         deliveryEarliest: b.deliveryEarliest || null,
         deliveryLatest: b.deliveryLatest || null,
-        totalUnits: Number(b.totalUnits) || 0,
-        availableUnits: b.availableUnits == null ? null : Number(b.availableUnits),
-        unitTypes: Array.isArray(b.unitTypes) ? b.unitTypes.map(Number) : [],
-        priceMin: b.priceMin == null ? null : Number(b.priceMin),
-        priceMax: b.priceMax == null ? null : Number(b.priceMax),
+        totalUnits: finite(b.totalUnits),
+        availableUnits: finiteOrNull(b.availableUnits),
+        unitTypes: Array.isArray(b.unitTypes) ? b.unitTypes.map(Number).filter(Number.isFinite) : [],
+        priceMin: finiteOrNull(b.priceMin),
+        priceMax: finiteOrNull(b.priceMax),
         amenities: Array.isArray(b.amenities) ? b.amenities : [],
         urbanRenewal: !!b.urbanRenewal, urbanRenewalType: b.urbanRenewalType || null,
         salesOffice: b.salesOffice || null,
-        source: b.source || 'CRM (ידני)', sourceTier: Number(b.sourceTier) || 5,
+        source: b.source || 'CRM (ידני)', sourceTier: finite(b.sourceTier, 5),
       },
     });
     return res.status(201).json(project);
@@ -172,11 +187,11 @@ realestateRouter.patch('/projects/:id', async (req, res) => {
         ...(b.expectedDelivery !== undefined && { expectedDelivery: b.expectedDelivery }),
         ...(b.deliveryEarliest !== undefined && { deliveryEarliest: b.deliveryEarliest }),
         ...(b.deliveryLatest !== undefined && { deliveryLatest: b.deliveryLatest }),
-        ...(b.totalUnits !== undefined && { totalUnits: Number(b.totalUnits) || 0 }),
-        ...(b.availableUnits !== undefined && { availableUnits: b.availableUnits == null ? null : Number(b.availableUnits) }),
-        ...(Array.isArray(b.unitTypes) && { unitTypes: b.unitTypes.map(Number) }),
-        ...(b.priceMin !== undefined && { priceMin: b.priceMin == null ? null : Number(b.priceMin) }),
-        ...(b.priceMax !== undefined && { priceMax: b.priceMax == null ? null : Number(b.priceMax) }),
+        ...(b.totalUnits !== undefined && { totalUnits: finite(b.totalUnits) }),
+        ...(b.availableUnits !== undefined && { availableUnits: finiteOrNull(b.availableUnits) }),
+        ...(Array.isArray(b.unitTypes) && { unitTypes: b.unitTypes.map(Number).filter(Number.isFinite) }),
+        ...(b.priceMin !== undefined && { priceMin: finiteOrNull(b.priceMin) }),
+        ...(b.priceMax !== undefined && { priceMax: finiteOrNull(b.priceMax) }),
         ...(Array.isArray(b.amenities) && { amenities: b.amenities }),
         ...(b.urbanRenewal !== undefined && { urbanRenewal: !!b.urbanRenewal }),
         ...(b.urbanRenewalType !== undefined && { urbanRenewalType: b.urbanRenewalType }),
@@ -418,11 +433,11 @@ async function fetchYad2ViaApify(
         city: it.cityHebrew || city,
         neighborhood: it.neighbourhood || null,
         street: it.streetName || it.address || null,
-        rooms: Math.round(it.rooms ?? rooms ?? 0),
-        floor: Math.round(Number(it.floor) || 0),
+        rooms: Math.round(finite(it.rooms ?? rooms ?? 0)),
+        floor: Math.round(finite(it.floor)),
         totalFloors: parseTotalFloors(desc),
-        sizeSqm: Math.round(it.areaSqm ?? 0),
-        price: Math.round(it.price ?? 0),
+        sizeSqm: Math.round(finite(it.areaSqm)),
+        price: Math.round(finite(it.price)),
         parking: Boolean(it.hasParking),
         elevator: Boolean(it.hasElevator),
         balcony: Boolean(it.hasBalcony),
@@ -432,7 +447,7 @@ async function fetchYad2ViaApify(
         agent: it.hasAgent ? (it.contactName || 'תיווך') : null,
         listedBy: deriveListedBy(it.adType, it.hasAgent),
         source: 'Yad2',
-        sourceUrl: it.url as string, // direct link to the specific ad
+        sourceUrl: safeListingUrl(it.url), // direct link to the specific ad (validated)
       };
     });
 }
@@ -464,26 +479,18 @@ realestateRouter.post('/listings/search', async (req, res) => {
       ? realData!
       : buildListings(tenantId, city, rooms, type, maxPrice, count);
 
-    // Refresh the pulled set for this city; keep manually-added listings.
-    await prisma.listing.deleteMany({
-      where: { tenantId, city, source: { not: 'CRM (ידני)' } },
-    });
-    await prisma.listing.createMany({ data });
+    // Refresh the pulled set for this city; keep manually-added listings. Atomic so a
+    // malformed batch can't delete the old listings and then fail the insert (data loss).
+    await prisma.$transaction([
+      prisma.listing.deleteMany({ where: { tenantId, city, source: { not: 'CRM (ידני)' } } }),
+      prisma.listing.createMany({ data }),
+    ]);
 
-    // Diagnostics (safe, ASCII; no secret exposed) so we can pinpoint failures.
+    // Minimal, non-sensitive diagnostics. Token length/format and upstream error bodies
+    // are NOT exposed to clients — they only reveal secret metadata / internals.
     const tk = process.env.APIFY_API_TOKEN || '';
     res.setHeader('X-Apify-Configured', tk ? '1' : '0');
     res.setHeader('X-Listings-Source', usedReal ? 'live' : 'estimated');
-    res.setHeader('X-Apify-Token-Len', String(tk.length));
-    res.setHeader('X-Apify-Token-Clean', /^apify_api_[A-Za-z0-9]+$/.test(tk) ? '1' : '0');
-    if (apifyError) res.setHeader('X-Apify-Error', apifyError.slice(0, 180).replace(/[^\x20-\x7E]/g, ''));
-    if (apifyError && tk) {
-      // Isolate token-validity from actor-access: hit a token-only endpoint.
-      try {
-        const me = await fetch(`https://api.apify.com/v2/users/me?token=${encodeURIComponent(tk)}`);
-        res.setHeader('X-Apify-Authcheck', String(me.status));
-      } catch { res.setHeader('X-Apify-Authcheck', 'err'); }
-    }
 
     const listings = await prisma.listing.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' } });
     return res.json(listings);
@@ -612,12 +619,22 @@ realestateRouter.delete('/clients/:id', async (req, res) => {
     await prisma.rEClient.delete({ where: { id: req.params.id } });
 
     // Optionally also remove the linked WhatsApp contact (?deleteLead=true).
+    // Guard against wiping a real conversation: only delete a lead that was created by
+    // this real-estate sync (tagged 'נדל״ן') AND has no message history. Anything else
+    // (an organic WhatsApp contact with chat history) is preserved.
     if (req.query.deleteLead === 'true' && existing.phone) {
       try {
         const norm = normalizePhone(existing.phone);
         if (norm) {
           const lead = await prisma.lead.findFirst({ where: { tenantId, phone: norm } });
-          if (lead) await prisma.lead.delete({ where: { id: lead.id } }); // cascades messages/activities
+          if (lead) {
+            const msgCount = await prisma.message.count({ where: { leadId: lead.id } });
+            if (lead.tags.includes('נדל״ן') && msgCount === 0) {
+              await prisma.lead.delete({ where: { id: lead.id } });
+            } else {
+              console.warn(`Skipped deleting lead ${lead.id}: ${msgCount} messages / not a נדל״ן-only lead`);
+            }
+          }
         }
       } catch (e) {
         console.error('REClient→Lead delete sync failed:', (e as Error).message);

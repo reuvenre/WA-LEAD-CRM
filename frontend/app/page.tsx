@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { LeadList } from '@/components/LeadList';
 import { ChatArea } from '@/components/ChatArea';
 import { LeadDetails } from '@/components/LeadDetails';
@@ -34,6 +34,10 @@ export default function CRMPage() {
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
+  // Always-current selected lead id, so async send-reconciliation never appends a
+  // message into a chat the user has since switched away from.
+  const selectedLeadIdRef = useRef<string | null>(null);
+  useEffect(() => { selectedLeadIdRef.current = selectedLeadId; }, [selectedLeadId]);
   const [loadingLeads, setLoadingLeads] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
@@ -65,10 +69,17 @@ export default function CRMPage() {
   // ─── Load Selected Lead ──────────────────────────────────────────────────────
   useEffect(() => {
     if (!selectedLeadId) { setSelectedLead(null); setMessages([]); return; }
+    // Clear immediately so the previous lead's messages don't linger, and guard against
+    // out-of-order responses when switching leads quickly (stale fetch is ignored).
+    let stale = false;
+    setSelectedLead(null);
+    setMessages([]);
     api.leads.get(selectedLeadId).then((lead) => {
+      if (stale) return;
       setSelectedLead(lead);
       setMessages(lead.messages ?? []);
-    });
+    }).catch(() => { /* 401 handled globally; transient errors leave the pane empty */ });
+    return () => { stale = true; };
   }, [selectedLeadId]);
 
   // ─── Socket.io ───────────────────────────────────────────────────────────────
@@ -105,7 +116,7 @@ export default function CRMPage() {
 
     // Optimistic: show the message instantly (status "sending") instead of waiting
     // for the Green API round-trip, then reconcile with the real one.
-    const tempId = `temp_${Date.now()}`;
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     const optimistic: Message = {
       id: tempId, leadId, content, type: 'text',
       direction: 'outbound', status: 'sending', timestamp: new Date().toISOString(),
@@ -115,6 +126,8 @@ export default function CRMPage() {
 
     try {
       const { message } = await api.messages.send(leadId, content);
+      // If the user switched leads mid-send, don't inject this into the now-visible chat.
+      if (selectedLeadIdRef.current !== leadId) return;
       setMessages((prev) => {
         const withoutTemp = prev.filter((m) => m.id !== tempId);
         // The socket NEW_MESSAGE may already have appended the real message.
@@ -122,7 +135,9 @@ export default function CRMPage() {
         return [...withoutTemp, message];
       });
     } catch (err) {
-      setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, status: 'failed' } : m));
+      if (selectedLeadIdRef.current === leadId) {
+        setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, status: 'failed' } : m));
+      }
       alert(err instanceof Error ? err.message : 'שליחת ההודעה נכשלה');
     }
   };
@@ -132,7 +147,7 @@ export default function CRMPage() {
     if (!leadId) return;
 
     const isImage = file.type.startsWith('image/');
-    const tempId = `temp_${Date.now()}`;
+    const tempId = `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     // Local preview so images appear instantly while the upload is in flight.
     const previewUrl = isImage ? URL.createObjectURL(file) : null;
     const optimistic: Message = {
@@ -145,17 +160,22 @@ export default function CRMPage() {
 
     try {
       const { message } = await api.messages.sendFile(leadId, file);
+      // Real message carries the hosted URL; drop the local preview either way.
+      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      // Don't inject into a chat the user has since switched away from.
+      if (selectedLeadIdRef.current !== leadId) return;
       setMessages((prev) => {
         const withoutTemp = prev.filter((m) => m.id !== tempId);
         if (withoutTemp.some((m) => m.id === message.id)) return withoutTemp;
         return [...withoutTemp, message];
       });
-      // Real message now carries the hosted URL; drop the local preview.
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
     } catch (err) {
-      // Keep the local preview on failure so the user still sees what they tried
-      // to send (marked failed). The object URL is released when the page unloads.
-      setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, status: 'failed' } : m));
+      // Keep the preview on failure so the user still sees what they tried to send.
+      if (selectedLeadIdRef.current === leadId) {
+        setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, status: 'failed' } : m));
+      } else if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
       alert(err instanceof Error ? err.message : 'שליחת הקובץ נכשלה');
     }
   };

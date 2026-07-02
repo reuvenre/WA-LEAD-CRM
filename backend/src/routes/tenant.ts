@@ -1,9 +1,21 @@
 import { Router, Request, Response } from 'express';
+import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 
 export const tenantRouter = Router();
 
-// GET /api/tenant/settings — get current tenant's settings
+// Only a tenant admin (or the platform super-admin) may change company-wide settings.
+function requireTenantAdmin(req: Request, res: Response): boolean {
+  if (req.user!.role !== 'ADMIN' && req.user!.role !== 'SUPER_ADMIN') {
+    res.status(403).json({ error: 'רק מנהל יכול לבצע פעולה זו' });
+    return false;
+  }
+  return true;
+}
+
+// GET /api/tenant/settings — get current tenant's settings.
+// The Green API token is a full WhatsApp credential and is NEVER returned to the
+// client — only a boolean saying whether one is configured (write-only from the UI).
 tenantRouter.get('/settings', async (req: Request, res: Response) => {
   const tenant = await prisma.tenant.findUnique({
     where: { id: req.user!.tenantId },
@@ -14,11 +26,18 @@ tenantRouter.get('/settings', async (req: Request, res: Response) => {
     },
   });
   if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
-  return res.json(tenant);
+  const { greenApiToken, greenApiWebhookUrl, ...safe } = tenant;
+  return res.json({
+    ...safe,
+    greenApiTokenSet: Boolean(greenApiToken),
+    // Strip any embedded ?token= secret before echoing the webhook URL back.
+    greenApiWebhookUrl: greenApiWebhookUrl ? greenApiWebhookUrl.split('?')[0] : null,
+  });
 });
 
-// PATCH /api/tenant/profile — update tenant name & email
+// PATCH /api/tenant/profile — update tenant name & email (admin only)
 tenantRouter.patch('/profile', async (req: Request, res: Response) => {
+  if (!requireTenantAdmin(req, res)) return;
   const { name, email } = req.body;
   if (!name?.trim()) return res.status(400).json({ error: 'שם חברה נדרש' });
   if (!email?.trim()) return res.status(400).json({ error: 'אימייל נדרש' });
@@ -38,28 +57,36 @@ tenantRouter.patch('/profile', async (req: Request, res: Response) => {
   return res.json({ success: true, tenant });
 });
 
-// PATCH /api/tenant/green-api — update Green API credentials
+// PATCH /api/tenant/green-api — update Green API credentials (admin only)
 tenantRouter.patch('/green-api', async (req: Request, res: Response) => {
+  if (!requireTenantAdmin(req, res)) return;
   const { greenApiInstanceId, greenApiToken, greenApiWebhookUrl } = req.body;
 
-  const tenant = await prisma.tenant.update({
+  // The token is write-only: an empty/omitted token keeps the stored one, so the
+  // admin can change the instance id or webhook without re-typing the secret.
+  const current = await prisma.tenant.findUnique({
     where: { id: req.user!.tenantId },
-    data: {
-      greenApiInstanceId: greenApiInstanceId?.trim() || null,
-      greenApiToken: greenApiToken?.trim() || null,
-      greenApiWebhookUrl: greenApiWebhookUrl?.trim() || null,
-    },
-    select: { id: true, greenApiInstanceId: true, greenApiWebhookUrl: true },
+    select: { greenApiToken: true, webhookSecret: true },
+  });
+
+  const id = greenApiInstanceId?.trim() || null;
+  const token = greenApiToken?.trim() ? greenApiToken.trim() : (current?.greenApiToken ?? null);
+  const hookBase = greenApiWebhookUrl?.trim() ? greenApiWebhookUrl.trim().split('?')[0] : null;
+
+  // First persist the plain credentials (no secret yet) so a failed setSettings
+  // never leaves us enforcing a secret Green API isn't sending.
+  await prisma.tenant.update({
+    where: { id: req.user!.tenantId },
+    data: { greenApiInstanceId: id, greenApiToken: token, greenApiWebhookUrl: hookBase },
   });
 
   // Auto-configure the Green API instance to deliver BOTH incoming and outgoing
-  // (phone-sent) message webhooks to our endpoint — so replies the user sends from
-  // their phone show up in the CRM. Best-effort: never fail the save on this.
+  // (phone-sent) message webhooks to our endpoint. Best-effort: never fail the save.
   let webhooksConfigured = false;
-  const id = greenApiInstanceId?.trim();
-  const token = greenApiToken?.trim();
-  const hookUrl = greenApiWebhookUrl?.trim();
   if (id && token) {
+    // Reuse an existing secret or mint a new one; only commit it if setSettings succeeds.
+    const secret = current?.webhookSecret || crypto.randomBytes(24).toString('hex');
+    const hookUrl = hookBase ? `${hookBase}?token=${secret}` : null;
     try {
       const r = await fetch(`https://api.green-api.com/waInstance${id}/setSettings/${encodeURIComponent(token)}`, {
         method: 'POST',
@@ -74,13 +101,21 @@ tenantRouter.patch('/green-api', async (req: Request, res: Response) => {
         }),
       });
       webhooksConfigured = r.ok;
-      if (!r.ok) console.warn(`Green API setSettings HTTP ${r.status}`);
+      if (r.ok && hookUrl) {
+        // Green API now posts with ?token=secret — safe to enforce it on our side.
+        await prisma.tenant.update({
+          where: { id: req.user!.tenantId },
+          data: { webhookSecret: secret, greenApiWebhookUrl: hookUrl },
+        });
+      } else if (!r.ok) {
+        console.warn(`Green API setSettings HTTP ${r.status}`);
+      }
     } catch (e) {
       console.warn('Green API setSettings failed:', (e as Error).message);
     }
   }
 
-  return res.json({ success: true, tenant, webhooksConfigured });
+  return res.json({ success: true, webhooksConfigured });
 });
 
 // POST /api/tenant/green-api/test — validate credentials against Green API itself.

@@ -308,6 +308,7 @@ function AgentsManagement() {
 function GreenApiSettings() {
   const [instanceId, setInstanceId] = useState('');
   const [token, setToken] = useState('');
+  const [tokenSet, setTokenSet] = useState(false); // a token exists server-side (never sent to us)
   const [showToken, setShowToken] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -345,7 +346,7 @@ function GreenApiSettings() {
   useEffect(() => {
     api.tenant.settings().then((s) => {
       setInstanceId(s.greenApiInstanceId ?? '');
-      setToken(s.greenApiToken ?? '');
+      setTokenSet(Boolean(s.greenApiTokenSet)); // token is write-only; never returned
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
@@ -356,10 +357,12 @@ function GreenApiSettings() {
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!instanceId.trim() || !token.trim()) { setError('נדרשים Instance ID ו-Token'); return; }
+    // Token is write-only: an existing (tokenSet) one may be kept without re-typing.
+    if (!instanceId.trim() || (!token.trim() && !tokenSet)) { setError('נדרשים Instance ID ו-Token'); return; }
     setSaving(true); setError(''); setSuccess(false);
     try {
       await api.tenant.updateGreenApi({ greenApiInstanceId: instanceId.trim(), greenApiToken: token.trim(), greenApiWebhookUrl: webhookUrl });
+      setTokenSet(true); setToken('');
       setSuccess(true);
       setTimeout(() => setSuccess(false), 3000);
     } catch (e: unknown) {
@@ -389,7 +392,7 @@ function GreenApiSettings() {
         <label className="text-xs font-semibold text-slate-600">API Token</label>
         <div className="relative">
           <input type={showToken ? 'text' : 'password'} value={token} onChange={(e) => setToken(e.target.value)}
-            placeholder="a14b720..." dir="ltr" autoComplete="off"
+            placeholder={tokenSet ? '•••••••• (שמור כדי לשנות)' : 'a14b720...'} dir="ltr" autoComplete="off"
             className={inputCls + ' pl-10'} />
           <button type="button" onClick={() => setShowToken((v) => !v)}
             className="absolute top-1/2 -translate-y-1/2 left-3 text-slate-400 hover:text-slate-600 transition"
