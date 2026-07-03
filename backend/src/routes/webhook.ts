@@ -20,7 +20,7 @@ function webhookAuthorized(req: Request, secret: string | null): boolean {
 }
 
 // ─── Shared processing logic ──────────────────────────────────────────────────
-async function processWebhook(req: Request, res: Response, tenantId: string, tenantName: string) {
+async function processWebhook(req: Request, res: Response, tenantId: string, tenantName: string, lineId: string | null = null) {
   const body = req.body;
   const typeWebhook = body?.typeWebhook;
 
@@ -108,8 +108,9 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
   const existingLead = await prisma.lead.findFirst({ where: { tenantId, phone } });
   const lead = await prisma.lead.upsert({
     where: { tenantId_phone: { tenantId, phone } },
-    update: { lastMessageAt: new Date() },
-    create: { tenantId, phone, name: contactName, lastMessageAt: new Date() },
+    // Stamp the line this conversation arrived on (backfill legacy leads that lack one).
+    update: { lastMessageAt: new Date(), ...(lineId ? { lineId } : {}) },
+    create: { tenantId, phone, name: contactName, lastMessageAt: new Date(), lineId },
   });
 
   if (!existingLead) {
@@ -161,7 +162,9 @@ webhookRouter.post('/:instanceId', async (req: Request, res: Response) => {
       return res.status(401).json({ error: 'unauthorized' });
     }
 
-    return processWebhook(req, res, tenant.id, tenant.name);
+    // Which line owns this number? (once lines exist; falls back to null pre-migration)
+    const line = await prisma.line.findFirst({ where: { tenantId: tenant.id, greenApiInstanceId: instanceId } });
+    return processWebhook(req, res, tenant.id, tenant.name, line?.id ?? null);
   } catch (error) {
     console.error('Webhook error:', error);
     return res.status(500).json({ error: 'Internal server error' });
@@ -192,7 +195,8 @@ webhookRouter.post('/', async (req: Request, res: Response) => {
         console.warn(`⚠️ Webhook rejected (bad/missing token) for instanceId: ${bodyInstanceId}`);
         return res.status(401).json({ error: 'unauthorized' });
       }
-      return processWebhook(req, res, tenant.id, tenant.name);
+      const line = await prisma.line.findFirst({ where: { tenantId: tenant.id, greenApiInstanceId: bodyInstanceId } });
+      return processWebhook(req, res, tenant.id, tenant.name, line?.id ?? null);
     }
 
     // No instance info in the payload — only safe to route in a single-tenant deployment.
