@@ -3,6 +3,7 @@ import { prisma } from '../lib/prisma';
 import { SOCKET_EVENTS, emitScoped } from '../socket';
 import { canAccessLead } from '../middleware/auth';
 import { getProvider, resolveCreds } from '../lib/messaging';
+import { checkAndBumpDailyCap } from '../lib/entitlements';
 import { Server as SocketIOServer } from 'socket.io';
 
 export const messagesRouter = Router();
@@ -51,6 +52,9 @@ messagesRouter.post('/send', async (req: Request, res: Response) => {
     if (!phone) {
       return res.status(400).json({ error: 'לליד אין מספר טלפון תקין — לא ניתן לשלוח הודעה' });
     }
+
+    // Anti-ban daily cap per line (also enforces the plan's daily message allowance).
+    if (!(await checkAndBumpDailyCap(req, res, lead.line))) return;
 
     const creds = resolveCreds(lead.line, await tenantCreds(tenantId));
     const result = await getProvider(creds.provider).sendText(creds, phone, content);
@@ -112,6 +116,8 @@ messagesRouter.post('/send-file', async (req: Request, res: Response) => {
     if (buffer.length > 16 * 1024 * 1024) {
       return res.status(413).json({ error: 'הקובץ גדול מדי (מקסימום 16MB)' });
     }
+
+    if (!(await checkAndBumpDailyCap(req, res, lead.line))) return;
 
     const creds = resolveCreds(lead.line, await tenantCreds(tenantId));
     const result = await getProvider(creds.provider).sendFile(

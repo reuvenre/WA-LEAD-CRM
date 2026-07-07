@@ -17,6 +17,7 @@ import { superAdminRouter } from './routes/superAdmin';
 import { tenantRouter } from './routes/tenant';
 import { googleRouter } from './routes/google';
 import { requireAuth } from './middleware/auth';
+import { requireFeature } from './lib/entitlements';
 import { initSocket, agentRoom } from './socket';
 import type { AuthPayload } from './middleware/auth';
 import { JWT_SECRET } from './lib/config';
@@ -77,8 +78,8 @@ app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date()
 app.use('/api/leads', requireAuth, leadsRouter);
 app.use('/api/messages', requireAuth, messagesRouter);
 app.use('/api/templates', requireAuth, templatesRouter);
-app.use('/api/analytics', requireAuth, analyticsRouter);
-app.use('/api/automations', requireAuth, automationsRouter);
+app.use('/api/analytics', requireAuth, requireFeature('analytics'), analyticsRouter);
+app.use('/api/automations', requireAuth, requireFeature('automations'), automationsRouter);
 app.use('/api/projects', requireAuth, projectsRouter);
 app.use('/api/realestate', requireAuth, realestateRouter);
 app.use('/api/tenant', requireAuth, tenantRouter);          // per-tenant settings

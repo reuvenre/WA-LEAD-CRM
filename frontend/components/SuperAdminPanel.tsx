@@ -92,6 +92,11 @@ export function SuperAdminPanel({ onClose }: SuperAdminPanelProps) {
     if (ok) setTenants(prev => prev.map(t => t.id === tenant.id ? { ...t, active: !t.active } : t));
   };
 
+  const handleChangePlan = async (tenant: Tenant, plan: string) => {
+    const { ok } = await adminFetch(`/api/super-admin/tenants/${tenant.id}`, 'PATCH', { plan });
+    if (ok) setTenants(prev => prev.map(t => t.id === tenant.id ? { ...t, plan } : t));
+  };
+
   const handleToggleUserActive = async (tenantId: string, user: TenantUser) => {
     const { ok } = await adminFetch(`/api/super-admin/users/${user.id}`, 'PATCH', { active: !user.active });
     if (ok) {
@@ -182,6 +187,18 @@ export function SuperAdminPanel({ onClose }: SuperAdminPanelProps) {
                       </p>
                     </div>
                     <div className="flex items-center gap-1.5">
+                      {/* Plan switcher — flip a tenant's plan to test each tier */}
+                      <select
+                        value={tenant.plan}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => handleChangePlan(tenant, e.target.value)}
+                        title="שנה מסלול"
+                        className="text-[11px] rounded-md border border-slate-200 bg-white px-1.5 py-1 text-slate-600 focus:outline-none focus:ring-2 focus:ring-brand-500"
+                      >
+                        <option value="TRIAL">ניסיון</option>
+                        <option value="BASIC">בסיסי</option>
+                        <option value="PRO">מקצועי</option>
+                      </select>
                       <button onClick={(e) => { e.stopPropagation(); handleToggleTenantActive(tenant); }}
                         className={cn('transition', tenant.active ? 'text-green-500 hover:text-red-500' : 'text-slate-300 hover:text-green-500')}
                         title={tenant.active ? 'השבת לקוח' : 'הפעל לקוח'}>

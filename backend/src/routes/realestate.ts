@@ -3,6 +3,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import { prisma } from '../lib/prisma';
 import { normalizePhone } from './leads';
 import { SOCKET_EVENTS, emitScoped } from '../socket';
+import { featuresFor } from '../lib/entitlements';
 
 // Real-estate domain API (phase-2). All routes tenant-scoped via req.user.tenantId.
 export const realestateRouter = Router();
@@ -465,32 +466,31 @@ realestateRouter.post('/listings/search', async (req, res) => {
       return res.status(400).json({ error: 'בחר עיר ספציפית כדי למשוך דירות מהמקורות' });
     }
 
-    // Prefer REAL data from Apify; fall back to the local estimator on any failure.
+    // Live listings pull is a PRO-only feature. Lower tiers don't get it at all (no
+    // fabricated "estimator" data mislabeled as Yad2/Madlan).
+    if (!(await featuresFor(tenantId)).apifyLive) {
+      return res.status(403).json({ error: 'משיכת דירות חיה זמינה במסלול PRO בלבד', upgrade: true, feature: 'apifyLive' });
+    }
+
+    // PRO: pull REAL data from Apify. On failure we do NOT fabricate — return an honest
+    // error and leave existing listings untouched, so no invented prices reach a client.
     let realData: Awaited<ReturnType<typeof fetchYad2ViaApify>> = null;
-    let apifyError = '';
     try {
       realData = await fetchYad2ViaApify(tenantId, city, rooms, type, maxPrice, count);
     } catch (e) {
-      apifyError = (e as Error).message || 'unknown';
-      console.error('Apify Yad2 fetch failed, using estimator:', apifyError);
+      console.error('Apify Yad2 fetch failed:', (e as Error).message || 'unknown');
+      return res.status(502).json({ error: 'משיכת הדירות נכשלה כרגע — נסו שוב בעוד רגע' });
     }
-    const usedReal = Boolean(realData && realData.length);
-    const data = usedReal
-      ? realData!
-      : buildListings(tenantId, city, rooms, type, maxPrice, count);
+    if (!realData || !realData.length) {
+      return res.status(404).json({ error: `לא נמצאו דירות תואמות ב${city}` });
+    }
 
     // Refresh the pulled set for this city; keep manually-added listings. Atomic so a
     // malformed batch can't delete the old listings and then fail the insert (data loss).
     await prisma.$transaction([
       prisma.listing.deleteMany({ where: { tenantId, city, source: { not: 'CRM (ידני)' } } }),
-      prisma.listing.createMany({ data }),
+      prisma.listing.createMany({ data: realData }),
     ]);
-
-    // Minimal, non-sensitive diagnostics. Token length/format and upstream error bodies
-    // are NOT exposed to clients — they only reveal secret metadata / internals.
-    const tk = process.env.APIFY_API_TOKEN || '';
-    res.setHeader('X-Apify-Configured', tk ? '1' : '0');
-    res.setHeader('X-Listings-Source', usedReal ? 'live' : 'estimated');
 
     const listings = await prisma.listing.findMany({ where: { tenantId }, orderBy: { createdAt: 'desc' } });
     return res.json(listings);

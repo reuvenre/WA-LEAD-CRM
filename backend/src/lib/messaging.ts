@@ -33,13 +33,14 @@ export interface MessagingProvider {
 }
 
 // ─── Green API ────────────────────────────────────────────────────────────────
+// Shown when a tenant tries to send before connecting WhatsApp. NEVER fake-succeed —
+// a "sent" checkmark on a message that never left is the worst possible failure.
+const NOT_CONNECTED = 'וואטסאפ לא מחובר — חברו את החשבון בהגדרות → Green API';
+
 const greenApiProvider: MessagingProvider = {
   async sendText(creds, phone, text) {
     const { greenApiInstanceId: id, greenApiToken: token } = creds;
-    if (!id || !token) {
-      console.log(`[MOCK] text → ${phone}: ${text.substring(0, 50)}`);
-      return { success: true, messageId: `mock_${phone}` };
-    }
+    if (!id || !token) return { success: false, error: NOT_CONNECTED };
     try {
       const r = await fetch(`https://api.green-api.com/waInstance${id}/sendMessage/${token}`, {
         method: 'POST',
@@ -59,10 +60,7 @@ const greenApiProvider: MessagingProvider = {
 
   async sendFile(creds, phone, file, fileName, mimeType, caption) {
     const { greenApiInstanceId: id, greenApiToken: token } = creds;
-    if (!id || !token) {
-      console.log(`[MOCK] file ${fileName} (${file.length}b) → ${phone}`);
-      return { success: true, messageId: `mock_${phone}`, urlFile: '' };
-    }
+    if (!id || !token) return { success: false, error: NOT_CONNECTED };
     try {
       // Media methods live on media.green-api.com (not api.green-api.com).
       const form = new FormData();

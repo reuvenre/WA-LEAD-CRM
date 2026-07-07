@@ -4,6 +4,7 @@ import { LeadStatus, Priority } from '@prisma/client';
 import { SOCKET_EVENTS, emitScoped } from '../socket';
 import { Server as SocketIOServer } from 'socket.io';
 import { leadScope, canAccessLead, isManager } from '../middleware/auth';
+import { checkLimit } from '../lib/entitlements';
 import { logActivity } from '../lib/activity';
 import { triggerAutomations } from '../lib/automations';
 import { syncLeadMeeting } from '../lib/google';
@@ -196,6 +197,7 @@ leadsRouter.post('/', async (req: Request, res: Response) => {
     if (!name || !phone) return res.status(400).json({ error: 'שם וטלפון הם שדות חובה' });
     if (status !== undefined && !Object.values(LeadStatus).includes(status)) return res.status(400).json({ error: 'סטטוס לא תקין' });
     if (priority !== undefined && !Object.values(Priority).includes(priority)) return res.status(400).json({ error: 'עדיפות לא תקינה' });
+    if (!(await checkLimit(req, res, 'lead'))) return; // plan lead cap
 
     const normalizedPhone = normalizePhone(phone);
 
@@ -249,6 +251,7 @@ leadsRouter.post('/import', async (req: Request, res: Response) => {
     if (!Array.isArray(rows) || rows.length === 0) {
       return res.status(400).json({ error: 'לא נשלחו נתונים לייבוא' });
     }
+    if (!(await checkLimit(req, res, 'lead'))) return; // plan lead cap
 
     const results = { created: 0, skipped: 0, errors: [] as string[] };
 
