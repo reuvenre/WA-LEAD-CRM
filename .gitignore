@@ -12,9 +12,6 @@ dist/
 .next/
 build/
 
-# Prisma
-backend/prisma/migrations/*.sql
-
 # Logs
 *.log
 npm-debug.log*

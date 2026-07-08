@@ -20,7 +20,10 @@ import { requireAuth } from './middleware/auth';
 import { requireFeature } from './lib/entitlements';
 import { initSocket, agentRoom } from './socket';
 import type { AuthPayload } from './middleware/auth';
-import { JWT_SECRET } from './lib/config';
+import { JWT_SECRET, validateEnv } from './lib/config';
+import { prisma } from './lib/prisma';
+
+validateEnv();
 
 const app = express();
 const httpServer = http.createServer(app);
@@ -64,15 +67,28 @@ app.use(cors({
   credentials: true,
 }));
 
-// 25mb accommodates base64-encoded image/document uploads (POST /messages/send-file).
-// WhatsApp media tops out ~16MB for most types; base64 inflates by ~33%.
-app.use(express.json({ limit: '25mb' }));
+// Only the file-upload route needs the big body (base64 image/document, ~16MB + 33%).
+// Everything else is capped at 1mb so a giant JSON body can't OOM the container.
+app.use('/api/messages/send-file', express.json({ limit: '25mb' }));
+app.use(express.json({ limit: '1mb' }));
 
 // ─── Public routes ────────────────────────────────────────────────────────────
 app.use('/api/auth', authRouter);
 app.use('/api/webhook', webhookRouter);
 app.use('/api/google', googleRouter); // mixes public (callback) + per-route requireAuth
-app.get('/health', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+
+// Liveness: cheap, always-200 as long as the event loop runs.
+app.get('/health/live', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));
+// Readiness: actually touches the DB so a monitor reports "down" during a DB outage
+// (the old /health returned 200 even when every real request was 500ing).
+app.get('/health', async (_req, res) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return res.json({ status: 'ok', db: 'up', timestamp: new Date().toISOString() });
+  } catch {
+    return res.status(503).json({ status: 'degraded', db: 'down', timestamp: new Date().toISOString() });
+  }
+});
 
 // ─── Protected routes ─────────────────────────────────────────────────────────
 app.use('/api/leads', requireAuth, leadsRouter);
@@ -122,5 +138,29 @@ httpServer.listen(PORT, '::', () => {
   console.log(`🚀 Server running on port ${PORT} (bound to :: / dual-stack)`);
   console.log(`🔌 Socket.io with tenant rooms enabled`);
 });
+
+// ─── Resilience ────────────────────────────────────────────────────────────────
+// A stray unhandled rejection would otherwise crash the process silently; log it
+// loudly (and keep serving) so one bad promise doesn't take down every tenant.
+process.on('unhandledRejection', (reason) => {
+  console.error('🔴 Unhandled promise rejection:', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('🔴 Uncaught exception:', err);
+});
+
+// Graceful shutdown on redeploy: stop accepting, drain, release the DB pool.
+let shuttingDown = false;
+async function shutdown(signal: string) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`⏳ ${signal} received — shutting down gracefully…`);
+  io.close();
+  httpServer.close(() => console.log('✅ HTTP server closed'));
+  try { await prisma.$disconnect(); } catch { /* ignore */ }
+  setTimeout(() => process.exit(0), 3000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
 
 export { io };

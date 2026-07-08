@@ -4,14 +4,13 @@ import jwt from 'jsonwebtoken';
 import speakeasy from 'speakeasy';
 import QRCode from 'qrcode';
 import crypto from 'crypto';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { requireAuth, AuthPayload } from '../middleware/auth';
 import { sendMail } from '../lib/mailer';
 import { seedDefaultTemplates } from './templates';
 import { JWT_SECRET } from '../lib/config';
 
 export const authRouter = Router();
-const prisma = new PrismaClient();
 
 const PASSWORD_REGEX = {
   minLength: (p: string) => p.length >= 12,

@@ -23,3 +23,20 @@ function resolveJwtSecret(): string {
 }
 
 export const JWT_SECRET = resolveJwtSecret();
+
+// Assert hard requirements at boot, and log which optional integrations are inert so
+// the operator isn't surprised by a silently-disabled feature in production.
+export function validateEnv(): void {
+  if (!process.env.DATABASE_URL) {
+    throw new Error('DATABASE_URL is not set — refusing to start.');
+  }
+  const optional: Record<string, string> = {
+    'SMTP_USER / SMTP_PASS': process.env.SMTP_USER && process.env.SMTP_PASS ? 'on' : 'off (password-reset emails disabled)',
+    'APIFY_API_TOKEN': process.env.APIFY_API_TOKEN ? 'on' : 'off (live listings pull disabled)',
+    'GOOGLE_CLIENT_ID': process.env.GOOGLE_CLIENT_ID ? 'on' : 'off (calendar sync disabled)',
+    'SENTRY_DSN': process.env.SENTRY_DSN ? 'on' : 'off (error tracking disabled)',
+  };
+  for (const [k, v] of Object.entries(optional)) {
+    if (v.startsWith('off')) console.warn(`⚠️  ${k}: ${v}`);
+  }
+}

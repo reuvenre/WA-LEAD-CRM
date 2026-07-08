@@ -219,6 +219,7 @@ model Message {
 
   @@index([leadId, timestamp])
   @@index([externalId])
+  @@index([tenantId, externalId])
 }
 
 model Template {
