@@ -11,6 +11,7 @@ import {
   AlertCircle,
   Paperclip,
   FileText,
+  ChevronRight,
 } from 'lucide-react';
 import { TemplateSelector } from './TemplateSelector';
 import { cn, STATUS_CONFIG, formatFullTime, ALL_STATUSES } from '@/lib/utils';
@@ -22,9 +23,10 @@ interface ChatAreaProps {
   onSendMessage: (content: string) => Promise<void>;
   onSendFile: (file: File) => Promise<void>;
   onLeadUpdate: (data: Partial<Lead>) => Promise<void>;
+  onBack?: () => void;
 }
 
-export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpdate }: ChatAreaProps) {
+export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpdate, onBack }: ChatAreaProps) {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -86,6 +88,12 @@ export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpda
       {/* ── Chat Header ── */}
       <header className="flex items-center justify-between px-5 py-3.5 bg-white border-b border-surface-border shadow-soft flex-shrink-0">
         <div className="flex items-center gap-3">
+          {/* Back to list — mobile only */}
+          {onBack && (
+            <button onClick={onBack} aria-label="חזרה לרשימה" className="md:hidden w-8 h-8 -mr-1 flex items-center justify-center rounded-lg text-slate-500 hover:bg-surface-subtle">
+              <ChevronRight className="w-5 h-5" />
+            </button>
+          )}
           {/* Avatar */}
           <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-400 to-brand-700 flex items-center justify-center text-white font-semibold text-sm flex-shrink-0">
             {lead.name.charAt(0)}

@@ -9,7 +9,7 @@ import { Dashboard, usePrefetchDashboard } from '@/components/Dashboard';
 import { useSocket } from '@/hooks/useSocket';
 import { api } from '@/lib/api';
 import type { Lead, Message } from '@/types';
-import { MessageSquare, LayoutGrid, UserPlus } from 'lucide-react';
+import { MessageSquare, LayoutGrid, UserPlus, Menu } from 'lucide-react';
 import { AddLeadModal } from '@/components/AddLeadModal';
 import { SettingsModal } from '@/components/SettingsModal';
 import { SuperAdminPanel } from '@/components/SuperAdminPanel';
@@ -51,6 +51,9 @@ export default function CRMPage() {
   const { ready, logout } = useAuth();
   const prefetchedDashboard = usePrefetchDashboard(ready);
   const currentUser = decodeToken();
+
+  // Mobile: the navy sidebar becomes a slide-in drawer (desktop is unchanged).
+  const [mobileNav, setMobileNav] = useState(false);
 
   // First-run guidance: prompt managers to connect WhatsApp until an instance is set.
   const [waConnected, setWaConnected] = useState<boolean | null>(null);
@@ -225,21 +228,41 @@ export default function CRMPage() {
 
   return (
     <div className="flex h-screen overflow-hidden bg-[#F4F6FB]" dir="rtl">
-      {/* ── Primary navy sidebar (demo style) ── */}
-      <AppSidebar
-        viewMode={viewMode}
-        onSelect={(v) => setViewMode(v)}
-        userName={currentUser?.username}
-        role={currentUser?.role}
-        isSuperAdmin={currentUser?.role === 'SUPER_ADMIN'}
-        onSettings={() => setShowSettings(true)}
-        onSuperAdmin={() => setShowSuperAdmin(true)}
-        onLogout={logout}
-      />
+      {/* Floating hamburger — mobile only */}
+      <button
+        onClick={() => setMobileNav(true)}
+        aria-label="פתח תפריט"
+        className="md:hidden fixed top-3 right-3 z-30 w-10 h-10 flex items-center justify-center rounded-lg bg-[#101E38] text-white shadow-lg"
+      >
+        <Menu className="w-5 h-5" />
+      </button>
 
-      {/* ── Lead list — secondary panel, only in chat & pipeline ── */}
+      {/* Mobile drawer backdrop */}
+      {mobileNav && (
+        <div className="md:hidden fixed inset-0 bg-black/40 z-40" onClick={() => setMobileNav(false)} />
+      )}
+
+      {/* ── Primary navy sidebar — static on desktop, slide-in drawer on mobile ── */}
+      <div
+        className={`flex-shrink-0 z-50 fixed inset-y-0 right-0 transition-transform duration-200 md:static md:translate-x-0 ${mobileNav ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}
+        onClick={() => setMobileNav(false)}
+      >
+        <AppSidebar
+          viewMode={viewMode}
+          onSelect={(v) => setViewMode(v)}
+          userName={currentUser?.username}
+          role={currentUser?.role}
+          isSuperAdmin={currentUser?.role === 'SUPER_ADMIN'}
+          onSettings={() => setShowSettings(true)}
+          onSuperAdmin={() => setShowSuperAdmin(true)}
+          onLogout={logout}
+        />
+      </div>
+
+      {/* ── Lead list — secondary panel, only in chat & pipeline. Full-width on mobile,
+           hidden once a conversation is open so the chat gets the whole screen. ── */}
       {(viewMode === 'chat' || viewMode === 'kanban') && (
-        <aside className="w-80 flex-shrink-0 flex flex-col border-l border-surface-border bg-white shadow-soft">
+        <aside className={`w-full md:w-80 flex-shrink-0 flex-col border-l border-surface-border bg-white shadow-soft ${viewMode === 'kanban' || (selectedLead && viewMode === 'chat') ? 'hidden md:flex' : 'flex'}`}>
           <LeadList
             leads={leads}
             loading={loadingLeads}
@@ -305,15 +328,16 @@ export default function CRMPage() {
             onSendMessage={handleSendMessage}
             onSendFile={handleSendFile}
             onLeadUpdate={handleLeadUpdate}
+            onBack={() => setSelectedLeadId(null)}
           />
         ) : (
           <EmptyState onAddLead={() => setShowAddLead(true)} />
         )}
       </main>
 
-      {/* ── Left Sidebar: Lead Details ── */}
+      {/* ── Left Sidebar: Lead Details — hidden on mobile (chat gets the screen) ── */}
       {selectedLead && viewMode === 'chat' && (
-        <aside className="w-72 flex-shrink-0 border-r border-surface-border bg-white shadow-soft overflow-hidden flex flex-col">
+        <aside className="hidden md:flex w-72 flex-shrink-0 border-r border-surface-border bg-white shadow-soft overflow-hidden flex-col">
           <LeadDetails lead={selectedLead} onUpdate={handleLeadUpdate} onDelete={handleLeadDelete} />
         </aside>
       )}
