@@ -55,6 +55,10 @@ export default function CRMPage() {
   // Mobile: the navy sidebar becomes a slide-in drawer (desktop is unchanged).
   const [mobileNav, setMobileNav] = useState(false);
 
+  // Lightweight toast (replaces alert() for send failures — reads far more polished).
+  const [toast, setToast] = useState<string | null>(null);
+  useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3500); return () => clearTimeout(t); }, [toast]);
+
   // First-run guidance: prompt managers to connect WhatsApp until an instance is set.
   const [waConnected, setWaConnected] = useState<boolean | null>(null);
   useEffect(() => {
@@ -152,7 +156,7 @@ export default function CRMPage() {
       if (selectedLeadIdRef.current === leadId) {
         setMessages((prev) => prev.map((m) => m.id === tempId ? { ...m, status: 'failed' } : m));
       }
-      alert(err instanceof Error ? err.message : 'שליחת ההודעה נכשלה');
+      setToast(err instanceof Error ? err.message : 'שליחת ההודעה נכשלה');
     }
   };
 
@@ -190,7 +194,7 @@ export default function CRMPage() {
       } else if (previewUrl) {
         URL.revokeObjectURL(previewUrl);
       }
-      alert(err instanceof Error ? err.message : 'שליחת הקובץ נכשלה');
+      setToast(err instanceof Error ? err.message : 'שליחת הקובץ נכשלה');
     }
   };
 
@@ -329,6 +333,7 @@ export default function CRMPage() {
             onSendFile={handleSendFile}
             onLeadUpdate={handleLeadUpdate}
             onBack={() => setSelectedLeadId(null)}
+            onNotify={setToast}
           />
         ) : (
           <EmptyState onAddLead={() => setShowAddLead(true)} />
@@ -340,6 +345,11 @@ export default function CRMPage() {
         <aside className="hidden md:flex w-72 flex-shrink-0 border-r border-surface-border bg-white shadow-soft overflow-hidden flex-col">
           <LeadDetails lead={selectedLead} onUpdate={handleLeadUpdate} onDelete={handleLeadDelete} />
         </aside>
+      )}
+      {toast && (
+        <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] bg-slate-900 text-white text-sm font-medium px-4 py-2.5 rounded-lg shadow-lg max-w-[90vw] text-center">
+          {toast}
+        </div>
       )}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showSuperAdmin && <SuperAdminPanel onClose={() => setShowSuperAdmin(false)} />}

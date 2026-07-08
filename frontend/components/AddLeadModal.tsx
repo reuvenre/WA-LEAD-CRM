@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { X, UserPlus, Upload, AlertCircle, CheckCircle } from 'lucide-react';
 import { api } from '@/lib/api';
 import type { Lead } from '@/types';
@@ -55,6 +55,9 @@ function ManualForm({ onClose, onLeadAdded }: { onClose: () => void; onLeadAdded
   });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  // Real users, so assignment matches an actual agent (a typo would break agent-scoping).
+  const [users, setUsers] = useState<Array<{ id: string; username: string; role: string; active: boolean }>>([]);
+  useEffect(() => { api.tenant.listUsers().then(setUsers).catch(() => {}); }, []);
 
   const set = (key: string, val: string) => setForm((f) => ({ ...f, [key]: val }));
 
@@ -120,7 +123,12 @@ function ManualForm({ onClose, onLeadAdded }: { onClose: () => void; onLeadAdded
       </div>
 
       <Field label="מוקצה לנציג">
-        <input value={form.assignedTo} onChange={(e) => set('assignedTo', e.target.value)} placeholder="שם הנציג" className={inputCls} />
+        <select value={form.assignedTo} onChange={(e) => set('assignedTo', e.target.value)} className={inputCls}>
+          <option value="">לא מוקצה</option>
+          {users.filter((u) => u.active).map((u) => (
+            <option key={u.id} value={u.username}>{u.username}{u.role === 'ADMIN' ? ' (מנהל)' : ''}</option>
+          ))}
+        </select>
       </Field>
 
       <Field label="הערות פנימיות">

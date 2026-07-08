@@ -24,9 +24,10 @@ interface ChatAreaProps {
   onSendFile: (file: File) => Promise<void>;
   onLeadUpdate: (data: Partial<Lead>) => Promise<void>;
   onBack?: () => void;
+  onNotify?: (msg: string) => void;
 }
 
-export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpdate, onBack }: ChatAreaProps) {
+export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpdate, onBack, onNotify }: ChatAreaProps) {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -71,8 +72,8 @@ export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpda
     if (!file || uploading) return;
     // Validate up front — avoid reading a huge file into a base64 string (freezes the
     // tab) only to have the server reject it. Backend cap is 16MB.
-    if (file.size === 0) { alert('הקובץ ריק'); return; }
-    if (file.size > 16 * 1024 * 1024) { alert('הקובץ גדול מדי (מקסימום 16MB)'); return; }
+    if (file.size === 0) { onNotify?.('הקובץ ריק'); return; }
+    if (file.size > 16 * 1024 * 1024) { onNotify?.('הקובץ גדול מדי (מקסימום 16MB)'); return; }
     setUploading(true);
     try {
       await onSendFile(file);
