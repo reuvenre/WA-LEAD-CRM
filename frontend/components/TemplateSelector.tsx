@@ -21,10 +21,10 @@ export function TemplateSelector({ onSelect, onClose, lead }: TemplateSelectorPr
   const searchRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    api.templates.list().then((t) => {
-      setTemplates(t);
-      setLoading(false);
-    });
+    api.templates.list()
+      .then((t) => setTemplates(t))
+      .catch(() => { /* leave empty — the empty state renders, not an endless spinner */ })
+      .finally(() => setLoading(false));
   }, []);
 
   // Auto focus search

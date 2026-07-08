@@ -21,7 +21,9 @@ export function Dashboard({ onClose, prefetchedData }: DashboardProps) {
 
   useEffect(() => {
     if (prefetchedData) { setData(prefetchedData); setLoading(false); return; }
-    api.analytics.overview().then((d) => { setData(d); setLoading(false); });
+    // On failure (network, 403 for a plan without analytics) stop loading and fall
+    // through to the empty state instead of spinning the skeleton forever.
+    api.analytics.overview().then((d) => setData(d)).catch(() => {}).finally(() => setLoading(false));
   }, [prefetchedData]);
 
   const roleLabel = user ? (ROLE_LABELS[user.role] ?? user.role) : '';
@@ -227,7 +229,13 @@ export function Dashboard({ onClose, prefetchedData }: DashboardProps) {
             </div>
           </div>
         </div>
-      ) : null}
+      ) : (
+        <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-400 p-8 text-center">
+          <BarChart2 className="w-10 h-10 text-slate-300" />
+          <p className="text-sm">לא ניתן לטעון את נתוני הדשבורד כרגע.</p>
+          <p className="text-xs">ייתכן שהתכונה אינה זמינה במסלול הנוכחי, או שיש בעיית רשת זמנית.</p>
+        </div>
+      )}
     </div>
   );
 }
