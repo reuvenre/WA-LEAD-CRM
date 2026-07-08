@@ -7,6 +7,7 @@ import crypto from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { requireAuth, AuthPayload } from '../middleware/auth';
 import { sendMail } from '../lib/mailer';
+import { seedDefaultTemplates } from './templates';
 import { JWT_SECRET } from '../lib/config';
 
 export const authRouter = Router();
@@ -86,6 +87,9 @@ authRouter.post('/register', async (req: Request, res: Response) => {
     },
     include: { users: true },
   });
+
+  // Seed default Hebrew quick-reply templates so the app isn't empty on day one.
+  await seedDefaultTemplates(tenant.id).catch((e) => console.warn('seed templates failed:', (e as Error).message));
 
   const user = tenant.users[0];
   const token = signToken({ userId: user.id, tenantId: tenant.id, tenantName: tenant.name, username: user.username, role: user.role as AuthPayload['role'] });

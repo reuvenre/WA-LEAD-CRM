@@ -1,9 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, ShieldCheck, Lock, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Check, UserCircle, Building2, Mail, Users, Plus, ToggleLeft, ToggleRight, CalendarDays, Trash2 } from 'lucide-react';
+import { X, ShieldCheck, Lock, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Check, UserCircle, Building2, Mail, Users, Plus, ToggleLeft, ToggleRight, CalendarDays, Trash2, MessageSquareText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
+import type { Template } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -22,7 +23,7 @@ async function authFetch(path: string, body?: object, method?: string) {
 
 interface SettingsModalProps { onClose: () => void; }
 
-type Tab = 'profile' | 'agents' | '2fa' | 'password' | 'green-api' | 'google';
+type Tab = 'profile' | 'agents' | 'templates' | '2fa' | 'password' | 'green-api' | 'google';
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
   const [tab, setTab] = useState<Tab>('profile');
@@ -40,6 +41,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
         <div className="flex border-b border-surface-border">
           <TabBtn active={tab === 'profile'} onClick={() => setTab('profile')} icon={<UserCircle className="w-3.5 h-3.5" />} label="פרופיל" />
           <TabBtn active={tab === 'agents'} onClick={() => setTab('agents')} icon={<Users className="w-3.5 h-3.5" />} label="נציגים" />
+          <TabBtn active={tab === 'templates'} onClick={() => setTab('templates')} icon={<MessageSquareText className="w-3.5 h-3.5" />} label="תבניות" />
           <TabBtn active={tab === 'green-api'} onClick={() => setTab('green-api')} icon={<Wifi className="w-3.5 h-3.5" />} label="Green API" />
           <TabBtn active={tab === 'google'} onClick={() => setTab('google')} icon={<CalendarDays className="w-3.5 h-3.5" />} label="יומן" />
           <TabBtn active={tab === '2fa'} onClick={() => setTab('2fa')} icon={<ShieldCheck className="w-3.5 h-3.5" />} label="2FA" />
@@ -49,12 +51,93 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
         <div className="max-h-[70vh] overflow-y-auto">
           {tab === 'profile' && <ProfileSettings />}
           {tab === 'agents' && <AgentsManagement />}
+          {tab === 'templates' && <TemplatesManager />}
           {tab === 'green-api' && <GreenApiSettings />}
           {tab === 'google' && <GoogleCalendarSettings />}
           {tab === '2fa' && <TwoFactorSetup />}
           {tab === 'password' && <ChangePassword onDone={onClose} />}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Templates Manager ────────────────────────────────────────────────────────
+function TemplatesManager() {
+  const [items, setItems] = useState<Template[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [title, setTitle] = useState('');
+  const [body, setBody] = useState('');
+  const [category, setCategory] = useState('כללי');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  useEffect(() => {
+    api.templates.list().then(setItems).catch(() => setError('טעינת התבניות נכשלה')).finally(() => setLoading(false));
+  }, []);
+
+  const add = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim() || !body.trim() || saving) return;
+    setSaving(true); setError('');
+    try {
+      const t = await api.templates.create({ title: title.trim(), body: body.trim(), category: category.trim() || 'כללי' });
+      setItems((prev) => [...prev, t]);
+      setTitle(''); setBody('');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'שמירת התבנית נכשלה');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const remove = async (id: string) => {
+    setItems((prev) => prev.filter((t) => t.id !== id));
+    await api.templates.delete(id).catch(() => {});
+  };
+
+  return (
+    <div className="p-5 space-y-4">
+      <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-700 leading-relaxed">
+        תבניות תשובה מהירה לצ׳אט. אפשר להשתמש במשתנים: <code className="bg-blue-100 px-1 rounded" dir="ltr">{'{{שם}}'}</code> · <code className="bg-blue-100 px-1 rounded" dir="ltr">{'{{טלפון}}'}</code>
+      </div>
+
+      <form onSubmit={add} className="space-y-2">
+        <div className="grid grid-cols-3 gap-2">
+          <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="כותרת" className={inputCls + ' col-span-2'} />
+          <input value={category} onChange={(e) => setCategory(e.target.value)} placeholder="קטגוריה" className={inputCls} />
+        </div>
+        <textarea value={body} onChange={(e) => setBody(e.target.value)} placeholder="תוכן ההודעה…" rows={3}
+          className={inputCls + ' resize-none leading-relaxed'} />
+        {error && <p className="text-xs text-red-600">{error}</p>}
+        <button type="submit" disabled={!title.trim() || !body.trim() || saving}
+          className="w-full py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold transition flex items-center justify-center gap-1.5">
+          <Plus className="w-4 h-4" /> {saving ? 'מוסיף…' : 'הוסף תבנית'}
+        </button>
+      </form>
+
+      {loading ? (
+        <p className="text-center text-slate-400 text-sm py-4">טוען…</p>
+      ) : items.length === 0 ? (
+        <p className="text-center text-slate-400 text-sm py-4">אין תבניות עדיין — הוסף את הראשונה למעלה.</p>
+      ) : (
+        <div className="space-y-2">
+          {items.map((t) => (
+            <div key={t.id} className="border border-surface-border rounded-lg p-3 flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-semibold text-slate-800 truncate">{t.title}</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-500 flex-shrink-0">{t.category}</span>
+                </div>
+                <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{t.body}</p>
+              </div>
+              <button onClick={() => remove(t.id)} title="מחק" className="text-slate-300 hover:text-red-500 transition flex-shrink-0">
+                <Trash2 className="w-4 h-4" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

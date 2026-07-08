@@ -1,7 +1,26 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
+import { checkLimit } from '../lib/entitlements';
 
 export const templatesRouter = Router();
+
+// Hebrew real-estate quick-replies every new tenant starts with, so the templates
+// panel is never empty on day one. Supports {{שם}} / {{טלפון}} variables.
+export const DEFAULT_TEMPLATES: { title: string; body: string; category: string }[] = [
+  { category: 'ברכה', title: 'ברכה ראשונית', body: 'שלום {{שם}}, תודה שפנית אלינו! אשמח לעזור לך למצוא את הנכס המתאים. מתי נוח לך לשוחח?' },
+  { category: 'מעקב', title: 'מעקב אחרי פנייה', body: 'היי {{שם}}, רק מוודא שקיבלת את הפרטים ששלחתי. יש שאלות? אני כאן.' },
+  { category: 'פגישה', title: 'תיאום פגישה', body: 'שלום {{שם}}, אשמח לתאם פגישה לצפייה בנכס. אילו ימים ושעות מתאימים לך?' },
+  { category: 'פגישה', title: 'תזכורת לפגישה', body: 'היי {{שם}}, תזכורת לפגישה שלנו. נתראה בקרוב! אם צריך לשנות — עדכן אותי.' },
+  { category: 'נכס', title: 'שליחת נכס מתאים', body: 'מצאתי נכס שיכול להתאים לך {{שם}} — שולח פרטים ותמונות. אשמח לשמוע מה דעתך.' },
+  { category: 'סגירה', title: 'תודה לאחר סגירה', body: 'תודה רבה {{שם}} על האמון! מאחל לך המון הצלחה בנכס החדש 🙏' },
+];
+
+// Seed the defaults for a tenant that has none. Safe to call more than once.
+export async function seedDefaultTemplates(tenantId: string): Promise<void> {
+  const existing = await prisma.template.count({ where: { tenantId } });
+  if (existing > 0) return;
+  await prisma.template.createMany({ data: DEFAULT_TEMPLATES.map((t) => ({ ...t, tenantId })) });
+}
 
 // GET /templates
 templatesRouter.get('/', async (req: Request, res: Response) => {
@@ -26,6 +45,7 @@ templatesRouter.post('/', async (req: Request, res: Response) => {
     if (!title || !body || !category) {
       return res.status(400).json({ error: 'title, body, category required' });
     }
+    if (!(await checkLimit(req, res, 'template'))) return; // plan template cap
     const template = await prisma.template.create({
       data: { tenantId, title, body, category },
     });
