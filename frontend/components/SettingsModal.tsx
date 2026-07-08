@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import { X, ShieldCheck, Lock, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Check, UserCircle, Building2, Mail, Users, Plus, ToggleLeft, ToggleRight, CalendarDays, Trash2, MessageSquareText } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
+import { useConfirm } from './useConfirm';
 import type { Template } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -245,6 +246,7 @@ function AgentsManagement() {
   const [newRole, setNewRole] = useState('AGENT');
   const [addError, setAddError] = useState('');
   const [addLoading, setAddLoading] = useState(false);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   const roleLabels: Record<string, string> = { SUPER_ADMIN: 'מנהל-על', ADMIN: 'מנהל', AGENT: 'נציג' };
 
@@ -285,7 +287,7 @@ function AgentsManagement() {
   };
 
   const handleDeleteUser = async (id: string, username: string) => {
-    if (!confirm(`להסיר את ${username} מהמערכת? פעולה זו בלתי הפיכה.`)) return;
+    if (!(await confirm(`להסיר את ${username} מהמערכת? פעולה זו בלתי הפיכה.`))) return;
     try {
       await api.tenant.deleteUser(id);
       setUsers(prev => prev.filter(u => u.id !== id));
@@ -383,6 +385,7 @@ function AgentsManagement() {
           הוסף נציג חדש
         </button>
       )}
+      {confirmDialog}
     </div>
   );
 }

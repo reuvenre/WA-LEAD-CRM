@@ -4,6 +4,7 @@ import { Users, Plus, Pencil, Trash2, Phone, MapPin, Home, Wallet, CalendarClock
 import { loadClients, addClient, updateClient, deleteClient } from '@/lib/realestate/projects'
 import { ISRAELI_CITIES } from '@/lib/realestate/cities'
 import { Modal, FormRow, TextInput, SelectInput, SubmitButton } from '@/components/realestate/Modal'
+import { useConfirm } from '@/components/useConfirm'
 import type { ClientProfile } from '@/lib/realestate/types'
 
 const YEARS = ['2025', '2026', '2027', '2028', '2029', '2030']
@@ -19,6 +20,7 @@ export default function REClients() {
   const [editing, setEditing] = useState<ClientProfile | null>(null)
   const [f, setF] = useState({ ...blank })
   const [saving, setSaving] = useState(false)
+  const { confirm, dialog: confirmDialog } = useConfirm()
 
   useEffect(() => { loadClients().then(c => setClients([...c])).finally(() => setLoading(false)) }, [])
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(''), 2600); return () => clearTimeout(t) }, [toast])
@@ -62,10 +64,10 @@ export default function REClients() {
   }
 
   const remove = async (c: ClientProfile) => {
-    if (!confirm(`למחוק את הלקוח "${c.name}"?`)) return
+    if (!(await confirm(`למחוק את הלקוח "${c.name}"?`))) return
     let alsoDelete = false
     if (c.linkedToWhatsapp) {
-      alsoDelete = confirm(
+      alsoDelete = await confirm(
         `הלקוח מחובר לאיש קשר ב-WhatsApp.\n\nאישור — מחק גם את איש הקשר וההתכתבות מ-WhatsApp.\nביטול — מחק רק את הלקוח, השאר את איש הקשר ב-WhatsApp.`,
       )
     }
@@ -151,6 +153,7 @@ export default function REClients() {
       </Modal>
 
       {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs font-medium px-4 py-2.5 rounded-lg fade-in">✓ {toast}</div>}
+      {confirmDialog}
     </div>
   )
 }

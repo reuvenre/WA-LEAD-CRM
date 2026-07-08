@@ -6,6 +6,7 @@ import {
   AlertCircle, CheckCircle, Eye, EyeOff, ChevronDown, ChevronUp, BarChart2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useConfirm } from './useConfirm';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -60,6 +61,7 @@ export function SuperAdminPanel({ onClose }: SuperAdminPanelProps) {
   const [expandedTenant, setExpandedTenant] = useState<string | null>(null);
   const [tenantUsers, setTenantUsers] = useState<Record<string, TenantUser[]>>({});
   const [resetModal, setResetModal] = useState<{ userId: string; username: string } | null>(null);
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   useEffect(() => {
     Promise.all([
@@ -108,7 +110,7 @@ export function SuperAdminPanel({ onClose }: SuperAdminPanelProps) {
   };
 
   const handleDeleteUser = async (tenantId: string, userId: string) => {
-    if (!confirm('האם למחוק את המשתמש? פעולה זו בלתי הפיכה.')) return;
+    if (!(await confirm('האם למחוק את המשתמש? פעולה זו בלתי הפיכה.'))) return;
     const { ok } = await adminFetch(`/api/super-admin/users/${userId}`, 'DELETE');
     if (ok) {
       setTenantUsers(prev => ({
@@ -119,7 +121,7 @@ export function SuperAdminPanel({ onClose }: SuperAdminPanelProps) {
   };
 
   const handleDeleteTenant = async (tenantId: string) => {
-    if (!confirm('האם למחוק את הלקוח וכל הנתונים שלו? פעולה זו בלתי הפיכה!')) return;
+    if (!(await confirm('האם למחוק את הלקוח וכל הנתונים שלו? פעולה זו בלתי הפיכה!'))) return;
     const { ok } = await adminFetch(`/api/super-admin/tenants/${tenantId}`, 'DELETE');
     if (ok) setTenants(prev => prev.filter(t => t.id !== tenantId));
   };
@@ -274,6 +276,7 @@ export function SuperAdminPanel({ onClose }: SuperAdminPanelProps) {
           onClose={() => setResetModal(null)}
         />
       )}
+      {confirmDialog}
     </div>
   );
 }
