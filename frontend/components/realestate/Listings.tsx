@@ -72,9 +72,10 @@ export default function Listings() {
       const all = await searchListings({ city, rooms, type, maxPrice })
       setListings([...all])
       const inCity = all.filter(l => l.city === city).length
-      setToast(`נמשכו ${inCity} דירות ב${city} מ-Yad2 · Madlan`)
-    } catch {
-      setToast('משיכת הדירות נכשלה')
+      setToast(`נמשכו ${inCity} דירות ב${city} מ-Yad2`)
+    } catch (err) {
+      // Surfaces the real backend message — e.g. "משיכת דירות חיה זמינה במסלול PRO בלבד".
+      setToast(err instanceof Error ? err.message : 'משיכת הדירות נכשלה')
     } finally {
       setFetching(false)
     }

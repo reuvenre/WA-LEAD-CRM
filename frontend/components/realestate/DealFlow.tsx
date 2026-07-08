@@ -207,7 +207,7 @@ export default function DealFlow() {
               <div style={{ padding: '18px 20px', borderBottom: '1px solid #F1F5F9', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div>
                   <h3 className="font-bold text-sm" style={{ color: '#0F172A' }}>דוח היתכנות מהיר</h3>
-                  <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>"דוח אפס" — ניתוח Gemini AI</p>
+                  <p className="text-xs mt-0.5" style={{ color: '#94A3B8' }}>"דוח אפס" — מחשבון היתכנות (הערכה)</p>
                 </div>
                 <button onClick={() => setShowModal(false)} className="text-slate-400 hover:text-slate-600">
                   <X size={18} />

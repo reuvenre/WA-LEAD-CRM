@@ -1,8 +1,8 @@
 'use client';
 import { useEffect, useMemo, useState } from 'react'
-import { Building, RefreshCw, Star, MapPin, X, Sparkles, Plus, UserPlus, Pencil } from 'lucide-react'
+import { Building, Star, MapPin, X, Sparkles, Plus, UserPlus, Pencil } from 'lucide-react'
 import {
-  PROJECTS, CITIES, fetchProjects, matchClient, addProject, addClient,
+  CITIES, matchClient, addProject, addClient,
   loadProjects, loadClients, updateProject,
 } from '@/lib/realestate/projects'
 import { ISRAELI_CITIES } from '@/lib/realestate/cities'
@@ -42,7 +42,6 @@ const priceRange = (p: Project) =>
 export default function Projects() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
-  const [fetching, setFetching] = useState(false)
   const [toast, setToast] = useState('')
   const [editId, setEditId] = useState<string | null>(null)
   const [city, setCity] = useState('הכל')
@@ -153,18 +152,6 @@ export default function Projects() {
     return true
   }), [projects, city, status, rooms])
 
-  const refresh = async () => {
-    setFetching(true)
-    try {
-      const r = await fetchProjects({ city, status, rooms })
-      setProjects([...PROJECTS])
-      setToast(`רוענן מהשרת — ${r.length} פרויקטים תואמי סינון`)
-    } catch {
-      setToast('רענון הפרויקטים נכשל')
-    } finally {
-      setFetching(false) // guarantee the full-screen overlay always clears
-    }
-  }
 
   // Data-quality flags (skill Step 6)
   const dq = useMemo(() => ({
@@ -187,22 +174,14 @@ export default function Projects() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold" style={{ color: '#0F172A' }}>פרויקטים — בנייה חדשה</h1>
-          <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>נמשך אוטומטית מ-Yad2 · Madlan · Nadlan.gov.il · רשות מקרקעי ישראל</p>
+          <p className="text-sm mt-0.5" style={{ color: '#64748B' }}>ניהול פרויקטים — הוספה ועריכה ידנית</p>
         </div>
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={openAddProj}
-            style={{ background: '#fff', color: '#2563EB', border: '1px solid #BFDBFE', borderRadius: 6, padding: '9px 16px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}
+            style={{ background: '#2563EB', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 16px', fontSize: 12, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}
           >
             <Plus size={14} /> פרויקט חדש
-          </button>
-          <button
-            onClick={refresh}
-            disabled={fetching}
-            style={{ background: '#2563EB', color: '#fff', border: 'none', borderRadius: 6, padding: '9px 16px', fontSize: 12, fontWeight: 600, cursor: fetching ? 'default' : 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, opacity: fetching ? 0.7 : 1 }}
-          >
-            <RefreshCw size={14} className={fetching ? 'animate-spin' : ''} />
-            {fetching ? 'מושך נתונים…' : 'משוך נתונים מהמקורות'}
           </button>
         </div>
       </div>
@@ -378,16 +357,6 @@ export default function Projects() {
         )}
       </div>
 
-      {/* fetch overlay + toast */}
-      {fetching && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center fade-in" style={{ background: 'rgba(15,31,61,.35)' }}>
-          <div className="bg-white rounded-xl px-6 py-5 text-center" style={{ boxShadow: '0 20px 60px rgba(0,0,0,.2)' }}>
-            <RefreshCw size={26} className="animate-spin mx-auto text-blue-600 mb-3" />
-            <p className="text-sm font-semibold text-slate-800">מושך פרויקטים מהמקורות…</p>
-            <p className="text-xs text-slate-400 mt-1">Yad2 · Madlan · Nadlan.gov.il · רמ"י</p>
-          </div>
-        </div>
-      )}
       {toast && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white text-xs font-medium px-4 py-2.5 rounded-lg fade-in">
           ✓ {toast}

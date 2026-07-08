@@ -191,7 +191,7 @@ export default function Properties() {
               className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden fade-in"
             >
               <div className="p-4 flex justify-between items-center border-b">
-                <h3 className="font-bold text-slate-800 text-sm">סריקת הסכם — {selected['Property Title']}</h3>
+                <h3 className="font-bold text-slate-800 text-sm">סריקת הסכם (הדגמה) — {selected['Property Title']}</h3>
                 <button onClick={closeScanner} className="text-slate-400 hover:text-slate-600"><X size={20} /></button>
               </div>
 
@@ -213,7 +213,7 @@ export default function Properties() {
                       </div>
                       <div className="absolute inset-3 border-2 border-blue-400/60 rounded-lg pointer-events-none" />
                     </div>
-                    <p className="text-xs text-slate-400 text-center">מצלמת המכשיר תלכוד את ההסכם — Gemini Vision יחלץ את הפרטים אוטומטית</p>
+                    <p className="text-xs text-amber-600 text-center bg-amber-50 rounded-lg py-1.5">הדגמה בלבד — במערכת החיה חילוץ הפרטים מהמסמך יתבצע אוטומטית</p>
                     <button
                       onClick={runScan}
                       className="w-full bg-blue-700 hover:bg-blue-800 text-white py-3 rounded-xl font-semibold flex items-center justify-center gap-2"
@@ -226,8 +226,8 @@ export default function Properties() {
                 {scanState === 'scanning' && (
                   <div className="py-10 text-center space-y-3">
                     <div className="animate-spin w-10 h-10 border-4 border-blue-600 border-t-transparent rounded-full mx-auto" />
-                    <p className="text-slate-600">מעלה ומנתח את המסמך...</p>
-                    <p className="text-xs text-slate-400">Gemini Vision מפענח את ההסכם</p>
+                    <p className="text-slate-600">מעבד את המסמך…</p>
+                    <p className="text-xs text-slate-400">הדגמה</p>
                   </div>
                 )}
                 {scanState === 'done' && scan && (
@@ -254,7 +254,7 @@ export default function Properties() {
                         </div>
                       ))}
                     </div>
-                    <p className="text-xs text-slate-400 bg-green-50 rounded-lg p-2 text-center">המסמך נשמר ב-Google Drive וקושר לנכס</p>
+                    <p className="text-xs text-amber-600 bg-amber-50 rounded-lg p-2 text-center">הדגמה — הנתונים לדוגמה בלבד ואינם נשמרים</p>
                     <button onClick={closeScanner} className="w-full bg-green-600 text-white py-2.5 rounded-lg text-sm font-semibold">סיום</button>
                   </div>
                 )}
