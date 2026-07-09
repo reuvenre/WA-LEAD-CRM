@@ -232,6 +232,48 @@ function ProfileSettings() {
         className={cn('w-full py-2.5 rounded-lg text-white text-sm font-semibold transition', success ? 'bg-green-500' : 'bg-brand-600 hover:bg-brand-700', 'disabled:opacity-50')}>
         {saving ? 'שומר...' : success ? '✓ נשמר!' : 'עדכן פרטים'}
       </button>
+
+      <GoogleLoginLink />
+    </div>
+  );
+}
+
+// ─── Google Sign-In linking ───────────────────────────────────────────────────
+function GoogleLoginLink() {
+  const [state, setState] = useState<{ configured: boolean; linked: boolean; email: string | null } | null>(null);
+
+  const load = () => authFetch('/api/auth/google/status').then(({ data }) => setState(data as never)).catch(() => {});
+  useEffect(() => {
+    load();
+    // Reflect a just-completed linking (the OAuth flow redirects to /?googleLinked=1).
+    if (typeof window !== 'undefined' && new URLSearchParams(window.location.search).get('googleLinked')) load();
+  }, []);
+
+  const link = async () => {
+    const { ok, data } = await authFetch('/api/auth/google/link');
+    if (ok && (data as { url?: string }).url) window.location.href = (data as { url: string }).url;
+  };
+  const unlink = async () => {
+    await authFetch('/api/auth/google/unlink', {}, 'POST');
+    load();
+  };
+
+  if (!state) return null;
+  return (
+    <div className="border-t border-surface-border pt-4 space-y-2">
+      <label className="text-xs font-semibold text-slate-600">התחברות עם Google</label>
+      {!state.configured ? (
+        <p className="text-xs text-slate-400">התחברות Google אינה מוגדרת בשרת (נדרש GOOGLE_CLIENT_ID).</p>
+      ) : state.linked ? (
+        <div className="flex items-center justify-between gap-2 bg-green-50 rounded-lg px-3 py-2">
+          <span className="text-xs text-green-700 truncate">מקושר{state.email ? ` · ${state.email}` : ''}</span>
+          <button onClick={unlink} className="text-xs font-semibold text-red-500 hover:text-red-600 flex-shrink-0">נתק</button>
+        </div>
+      ) : (
+        <button onClick={link} className="w-full py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-sm font-semibold text-slate-700 transition">
+          קשר חשבון Google לכניסה מהירה
+        </button>
+      )}
     </div>
   );
 }

@@ -8,6 +8,7 @@ import { prisma } from '../lib/prisma';
 import { requireAuth, AuthPayload } from '../middleware/auth';
 import { sendMail } from '../lib/mailer';
 import { seedDefaultTemplates } from './templates';
+import { isGoogleConfigured, buildLoginAuthUrl, exchangeLoginCode, getGoogleUserInfo } from '../lib/google';
 import { JWT_SECRET } from '../lib/config';
 
 export const authRouter = Router();
@@ -250,6 +251,87 @@ authRouter.post('/2fa/disable', requireAuth, async (req: Request, res: Response)
 authRouter.get('/2fa/status', requireAuth, async (req: Request, res: Response) => {
   const user = await prisma.user.findUnique({ where: { id: req.user!.userId } });
   return res.json({ enabled: user?.totpEnabled ?? false });
+});
+
+// ─── Google Sign-In (explicit account linking) ────────────────────────────────
+const FRONTEND = () => (process.env.FRONTEND_URL || 'http://localhost:3002').split(',')[0].replace(/\/+$/, '');
+
+// Start linking the logged-in account to a Google account (authenticated).
+authRouter.get('/google/link', requireAuth, (req: Request, res: Response) => {
+  if (!isGoogleConfigured()) return res.status(503).json({ error: 'התחברות Google אינה מוגדרת בשרת' });
+  const state = jwt.sign({ kind: 'google_link', userId: req.user!.userId }, JWT_SECRET, { expiresIn: '15m' });
+  return res.json({ url: buildLoginAuthUrl(state) });
+});
+
+// Whether the logged-in user has a Google account linked.
+authRouter.get('/google/status', requireAuth, async (req: Request, res: Response) => {
+  const user = await prisma.user.findUnique({ where: { id: req.user!.userId }, select: { googleId: true, googleLoginEmail: true } });
+  return res.json({ configured: isGoogleConfigured(), linked: Boolean(user?.googleId), email: user?.googleLoginEmail ?? null });
+});
+
+// Unlink Google Sign-In from the account.
+authRouter.post('/google/unlink', requireAuth, async (req: Request, res: Response) => {
+  await prisma.user.update({ where: { id: req.user!.userId }, data: { googleId: null, googleLoginEmail: null } });
+  return res.json({ success: true });
+});
+
+// Public: whether Google Sign-In is configured (so the login page can hide the button).
+authRouter.get('/google/available', (_req: Request, res: Response) => {
+  return res.json({ available: isGoogleConfigured() });
+});
+
+// Start "Sign in with Google" (public — no session yet).
+authRouter.get('/google/login', (_req: Request, res: Response) => {
+  if (!isGoogleConfigured()) return res.status(503).json({ error: 'התחברות Google אינה מוגדרת בשרת' });
+  const state = jwt.sign({ kind: 'google_login' }, JWT_SECRET, { expiresIn: '15m' });
+  return res.json({ url: buildLoginAuthUrl(state) });
+});
+
+// Shared OAuth callback for both link + login. Google redirects here with ?code&state.
+authRouter.get('/google/callback', async (req: Request, res: Response) => {
+  const fe = FRONTEND();
+  const code = String(req.query.code ?? '');
+  const rawState = String(req.query.state ?? '');
+  let state: { kind?: string; userId?: string };
+  try { state = jwt.verify(rawState, JWT_SECRET) as typeof state; }
+  catch { return res.redirect(`${fe}/login?googleError=state`); }
+
+  try {
+    const tok = await exchangeLoginCode(code);
+    const info = await getGoogleUserInfo(tok.access_token);
+    if (!info) return res.redirect(`${fe}/login?googleError=userinfo`);
+
+    // ── Link flow ──
+    if (state.kind === 'google_link' && state.userId) {
+      const taken = await prisma.user.findFirst({ where: { googleId: info.id, NOT: { id: state.userId } } });
+      if (taken) return res.redirect(`${fe}/?googleLinked=taken`);
+      await prisma.user.update({ where: { id: state.userId }, data: { googleId: info.id, googleLoginEmail: info.email } });
+      return res.redirect(`${fe}/?googleLinked=1`);
+    }
+
+    // ── Login flow ──
+    if (state.kind === 'google_login') {
+      const user = await prisma.user.findUnique({ where: { googleId: info.id }, include: { tenant: true } });
+      if (!user) return res.redirect(`${fe}/login?googleError=not_linked`);
+      if (!user.active || !user.tenant.active) return res.redirect(`${fe}/login?googleError=inactive`);
+
+      // Respect 2FA: if enabled, hand off a temp token and let the UI ask for the code.
+      if (user.totpEnabled && user.totpSecret) {
+        const tempToken = jwt.sign(
+          { userId: user.id, tenantId: user.tenantId, username: user.username, role: user.role, step: '2fa_pending' },
+          JWT_SECRET, { expiresIn: '5m' },
+        );
+        return res.redirect(`${fe}/login?tempToken=${encodeURIComponent(tempToken)}`);
+      }
+      const token = signToken({ userId: user.id, tenantId: user.tenantId, tenantName: user.tenant.name, username: user.username, role: user.role as AuthPayload['role'] });
+      return res.redirect(`${fe}/login?token=${encodeURIComponent(token)}`);
+    }
+
+    return res.redirect(`${fe}/login?googleError=state`);
+  } catch (e) {
+    console.error('Google OAuth callback error:', (e as Error).message);
+    return res.redirect(`${fe}/login?googleError=failed`);
+  }
 });
 
 // ─── POST /api/auth/forgot-password ──────────────────────────────────────────

@@ -85,6 +85,49 @@ export async function getGoogleEmail(accessToken: string): Promise<string | null
   }
 }
 
+// ─── Google Sign-In (explicit account linking) ──────────────────────────────────
+// A separate, minimal-scope OAuth flow used for LOGIN (not calendar). Uses its own
+// redirect URI so both can be registered on the same Google OAuth client.
+const LOGIN_REDIRECT_URI = process.env.GOOGLE_LOGIN_REDIRECT_URI || 'http://localhost:3001/api/auth/google/callback';
+const LOGIN_SCOPE = 'openid email profile';
+
+export function buildLoginAuthUrl(state: string): string {
+  const params = new URLSearchParams({
+    client_id: CLIENT_ID,
+    redirect_uri: LOGIN_REDIRECT_URI,
+    response_type: 'code',
+    scope: LOGIN_SCOPE,
+    prompt: 'select_account',
+    state,
+  });
+  return `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+}
+
+export async function exchangeLoginCode(code: string) {
+  return tokenRequest({
+    code,
+    client_id: CLIENT_ID,
+    client_secret: CLIENT_SECRET,
+    redirect_uri: LOGIN_REDIRECT_URI,
+    grant_type: 'authorization_code',
+  });
+}
+
+export async function getGoogleUserInfo(accessToken: string): Promise<{ id: string; email: string | null; name?: string } | null> {
+  try {
+    const r = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      signal: AbortSignal.timeout(8000),
+    });
+    if (!r.ok) return null;
+    const d = (await r.json()) as { id?: string; email?: string; name?: string; verified_email?: boolean };
+    if (!d.id) return null;
+    return { id: d.id, email: d.email ?? null, name: d.name };
+  } catch {
+    return null;
+  }
+}
+
 // ─── Calendar event sync ────────────────────────────────────────────────────────
 type SyncableLead = {
   id: string;

@@ -59,6 +59,15 @@ export default function CRMPage() {
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3500); return () => clearTimeout(t); }, [toast]);
 
+  // Surface the result of a Google-account linking (the OAuth flow redirects here).
+  useEffect(() => {
+    const g = new URLSearchParams(window.location.search).get('googleLinked');
+    if (g) {
+      setToast(g === 'taken' ? 'חשבון הגוגל כבר מקושר למשתמש אחר' : 'חשבון Google קושר בהצלחה ✓');
+      window.history.replaceState({}, '', '/');
+    }
+  }, []);
+
   // First-run guidance: prompt managers to connect WhatsApp until an instance is set.
   const [waConnected, setWaConnected] = useState<boolean | null>(null);
   useEffect(() => {
