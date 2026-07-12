@@ -36,6 +36,8 @@ export function CalendarView({ onLeadClick, onNavigate }: CalendarViewProps) {
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [showNew, setShowNew] = useState(false);
+  const [detail, setDetail] = useState<CalendarMeeting | null>(null);
+  const [editing, setEditing] = useState<CalendarMeeting | null>(null);
 
   const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`;
 
@@ -184,7 +186,7 @@ export function CalendarView({ onLeadClick, onNavigate }: CalendarViewProps) {
                               m.project ? '' : 'bg-brand-100 text-brand-700'
                             )}
                             style={m.project ? { backgroundColor: m.project.color + '20', color: m.project.color } : undefined}
-                            onClick={(e) => { e.stopPropagation(); onLeadClick(m.id); }}
+                            onClick={(e) => { e.stopPropagation(); setDetail(m); }}
                           >
                             {new Date(m.meetingDate).toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })} {m.name}
                           </div>
@@ -228,7 +230,7 @@ export function CalendarView({ onLeadClick, onNavigate }: CalendarViewProps) {
                   const cfg = STATUS_CONFIG[m.status as LeadStatus];
                   return (
                     <div key={m.id}
-                      onClick={() => onLeadClick(m.id)}
+                      onClick={() => setDetail(m)}
                       className="rounded-xl border border-surface-border p-3 space-y-2 hover:shadow-sm hover:border-brand-200 cursor-pointer transition-all"
                     >
                       <div className="flex items-center gap-2">
@@ -291,21 +293,122 @@ export function CalendarView({ onLeadClick, onNavigate }: CalendarViewProps) {
           onSaved={() => { setShowNew(false); loadMeetings(); }}
         />
       )}
+
+      {detail && (
+        <MeetingDetailsModal
+          meeting={detail}
+          onClose={() => setDetail(null)}
+          onOpenChat={() => { const id = detail.id; setDetail(null); onLeadClick(id); }}
+          onEdit={() => { setEditing(detail); setDetail(null); }}
+          onCleared={() => { setDetail(null); loadMeetings(); }}
+        />
+      )}
+
+      {editing && (
+        <NewMeetingModal
+          defaultDate={null}
+          initial={{
+            id: editing.id, name: editing.name, phone: editing.phone,
+            when: toLocalInput(new Date(editing.meetingDate)), notes: editing.meetingNotes ?? '',
+          }}
+          onClose={() => setEditing(null)}
+          onSaved={() => { setEditing(null); loadMeetings(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Meeting details (opens on click instead of jumping to the chat) ───────────
+function MeetingDetailsModal({ meeting, onClose, onOpenChat, onEdit, onCleared }: {
+  meeting: CalendarMeeting;
+  onClose: () => void;
+  onOpenChat: () => void;
+  onEdit: () => void;
+  onCleared: () => void;
+}) {
+  const [clearing, setClearing] = useState(false);
+  const cfg = STATUS_CONFIG[meeting.status as LeadStatus];
+  const d = new Date(meeting.meetingDate);
+  const clear = async () => {
+    setClearing(true);
+    try { await api.leads.update(meeting.id, { meetingDate: null, meetingNotes: null }); onCleared(); }
+    catch { setClearing(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" dir="rtl" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-surface-border">
+          <h3 className="font-bold text-slate-800 text-base">פרטי הפגישה</h3>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="p-5 space-y-3">
+          <div className="flex items-center gap-3">
+            <div className="w-11 h-11 rounded-full bg-gradient-to-br from-brand-400 to-brand-700 flex items-center justify-center text-white font-bold flex-shrink-0">
+              {meeting.name.charAt(0)}
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-bold text-slate-800 truncate">{meeting.name}</p>
+              <p className="text-xs text-slate-400 font-mono" dir="ltr">{meeting.phone}</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 text-sm text-slate-700 bg-surface-muted rounded-lg px-3 py-2">
+            <Clock className="w-4 h-4 text-brand-600 flex-shrink-0" />
+            {d.toLocaleDateString('he-IL', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })} · {d.toLocaleTimeString('he-IL', { hour: '2-digit', minute: '2-digit' })}
+          </div>
+
+          {meeting.meetingNotes && (
+            <div className="text-sm text-slate-600 bg-surface-muted rounded-lg px-3 py-2 whitespace-pre-line">{meeting.meetingNotes}</div>
+          )}
+
+          <div className="flex items-center gap-2 flex-wrap">
+            {cfg && (
+              <span className={cn('inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold', cfg.bg, cfg.color)}>
+                <span className={cn('w-1.5 h-1.5 rounded-full', cfg.dot)} /> {cfg.label}
+              </span>
+            )}
+            {meeting.assignedTo && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-slate-500"><User className="w-3 h-3" /> {meeting.assignedTo}</span>
+            )}
+            {meeting.project && (
+              <span className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+                <span className="w-2 h-2 rounded-full" style={{ backgroundColor: meeting.project.color }} /> {meeting.project.name}
+              </span>
+            )}
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 pt-1">
+            <button onClick={onEdit} className="py-2 rounded-lg border border-surface-border text-sm font-semibold text-slate-700 hover:bg-surface-subtle transition">ערוך</button>
+            <button onClick={onOpenChat} className="py-2 rounded-lg bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold transition flex items-center justify-center gap-1.5">
+              <MessageSquare className="w-4 h-4" /> פתח שיחה
+            </button>
+          </div>
+          <button onClick={clear} disabled={clearing} className="w-full py-2 rounded-lg text-sm font-semibold text-red-500 hover:bg-red-50 disabled:opacity-50 transition">
+            {clearing ? 'מבטל…' : 'בטל פגישה'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
 
 // ─── Schedule a meeting: pick a client, set date/time, save onto the lead ──────
-function NewMeetingModal({ defaultDate, onClose, onSaved }: {
+function NewMeetingModal({ defaultDate, initial, onClose, onSaved }: {
   defaultDate: Date | null;
+  initial?: { id: string; name: string; phone: string; when: string; notes: string };
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Array<{ id: string; name: string; phone: string }>>([]);
-  const [selected, setSelected] = useState<{ id: string; name: string; phone: string } | null>(null);
-  const [when, setWhen] = useState(defaultDate ? toLocalInput(defaultDate) : '');
-  const [notes, setNotes] = useState('');
+  const [selected, setSelected] = useState<{ id: string; name: string; phone: string } | null>(
+    initial ? { id: initial.id, name: initial.name, phone: initial.phone } : null,
+  );
+  const [when, setWhen] = useState(initial?.when ?? (defaultDate ? toLocalInput(defaultDate) : ''));
+  const [notes, setNotes] = useState(initial?.notes ?? '');
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -338,7 +441,7 @@ function NewMeetingModal({ defaultDate, onClose, onSaved }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" dir="rtl" onClick={onClose}>
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-border">
-          <h3 className="font-bold text-slate-800 text-base">קביעת פגישה</h3>
+          <h3 className="font-bold text-slate-800 text-base">{initial ? 'עריכת פגישה' : 'קביעת פגישה'}</h3>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400"><X className="w-4 h-4" /></button>
         </div>
 
