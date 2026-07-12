@@ -240,21 +240,22 @@ export default function CRMPage() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#F4F6FB]" dir="rtl">
-      {/* Floating hamburger — mobile only */}
-      <button
-        onClick={() => setMobileNav(true)}
-        aria-label="פתח תפריט"
-        className="md:hidden fixed top-3 right-3 z-30 w-10 h-10 flex items-center justify-center rounded-lg bg-[#101E38] text-white shadow-lg"
-      >
-        <Menu className="w-5 h-5" />
-      </button>
+    <div className="flex flex-col md:flex-row h-screen overflow-hidden bg-[#F4F6FB]" dir="rtl">
+      {/* Mobile top bar (hidden on desktop) — holds the menu button so nothing floats over content */}
+      <div className="md:hidden flex items-center gap-3 px-4 h-12 bg-[#101E38] text-white flex-shrink-0 z-20">
+        <button onClick={() => setMobileNav(true)} aria-label="פתח תפריט" className="w-9 h-9 -mr-2 flex items-center justify-center rounded-lg hover:bg-white/10 transition">
+          <Menu className="w-5 h-5" />
+        </button>
+        <span className="font-bold text-sm">Real Estate</span>
+      </div>
 
       {/* Mobile drawer backdrop */}
       {mobileNav && (
         <div className="md:hidden fixed inset-0 bg-black/40 z-40" onClick={() => setMobileNav(false)} />
       )}
 
+      {/* Panels row — the whole desktop layout; on mobile it sits below the top bar */}
+      <div className="flex flex-1 min-h-0 overflow-hidden">
       {/* ── Primary navy sidebar — static on desktop, slide-in drawer on mobile ── */}
       <div
         className={`flex-shrink-0 z-50 fixed inset-y-0 right-0 transition-transform duration-200 md:static md:translate-x-0 ${mobileNav ? 'translate-x-0' : 'translate-x-full md:translate-x-0'}`}
@@ -355,6 +356,9 @@ export default function CRMPage() {
           <LeadDetails lead={selectedLead} onUpdate={handleLeadUpdate} onDelete={handleLeadDelete} />
         </aside>
       )}
+      </div>
+      {/* ── end panels row ── */}
+
       {toast && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] bg-slate-900 text-white text-sm font-medium px-4 py-2.5 rounded-lg shadow-lg max-w-[90vw] text-center">
           {toast}

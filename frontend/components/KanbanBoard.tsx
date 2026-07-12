@@ -141,7 +141,7 @@ export function KanbanBoard({ leads, onLeadClick, onLeadsChange }: KanbanBoardPr
             {showLost ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
           </button>
           {showLost && (
-            <div className="mt-2 grid grid-cols-4 gap-2">
+            <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
               {lostLeads.map((lead) => (
                 <div key={lead.id} onClick={() => onLeadClick(lead.id)}
                   className="bg-white rounded-lg border border-slate-200 p-2.5 cursor-pointer hover:shadow-sm transition opacity-70 hover:opacity-100">
