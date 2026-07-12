@@ -9,7 +9,7 @@ import { Dashboard, usePrefetchDashboard } from '@/components/Dashboard';
 import { useSocket } from '@/hooks/useSocket';
 import { api } from '@/lib/api';
 import type { Lead, Message } from '@/types';
-import { MessageSquare, LayoutGrid, UserPlus, Menu } from 'lucide-react';
+import { MessageSquare, LayoutGrid, UserPlus, Menu, KeyRound } from 'lucide-react';
 import { AddLeadModal } from '@/components/AddLeadModal';
 import { SettingsModal } from '@/components/SettingsModal';
 import { SuperAdminPanel } from '@/components/SuperAdminPanel';
@@ -74,6 +74,12 @@ export default function CRMPage() {
     const role = decodeToken()?.role;
     if (role !== 'ADMIN' && role !== 'SUPER_ADMIN') return;
     api.tenant.settings().then((s) => setWaConnected(Boolean(s.greenApiInstanceId))).catch(() => {});
+  }, []);
+
+  // Plan features — gate nav items / screens that are paid upgrades (e.g. listings).
+  const [features, setFeatures] = useState<Record<string, boolean> | null>(null);
+  useEffect(() => {
+    api.tenant.entitlements().then((e) => setFeatures(e.entitlements.features)).catch(() => {});
   }, []);
 
   // ─── Load Leads ─────────────────────────────────────────────────────────────
@@ -266,6 +272,7 @@ export default function CRMPage() {
           onSelect={(v) => setViewMode(v)}
           userName={currentUser?.username}
           role={currentUser?.role}
+          features={features}
           isSuperAdmin={currentUser?.role === 'SUPER_ADMIN'}
           onSettings={() => setShowSettings(true)}
           onSuperAdmin={() => setShowSuperAdmin(true)}
@@ -306,7 +313,15 @@ export default function CRMPage() {
         ) : viewMode === 're_projects' ? (
           <div className="flex-1 overflow-y-auto bg-surface-muted"><ProjectsRE /></div>
         ) : viewMode === 'listings' ? (
-          <div className="flex-1 overflow-y-auto bg-surface-muted"><Listings /></div>
+          features && !features.listings ? (
+            <div className="flex-1 flex flex-col items-center justify-center gap-2 text-slate-400 p-8 text-center">
+              <KeyRound className="w-10 h-10 text-slate-300" />
+              <p className="text-sm font-semibold text-slate-500">דירות יד שניה — שדרוג בתשלום</p>
+              <p className="text-xs">התכונה אינה כלולה במסלול הנוכחי.</p>
+            </div>
+          ) : (
+            <div className="flex-1 overflow-y-auto bg-surface-muted"><Listings /></div>
+          )
         ) : viewMode === 'clients' ? (
           <div className="flex-1 overflow-y-auto bg-surface-muted"><REClients /></div>
         ) : viewMode === 'dashboard' ? (

@@ -173,6 +173,11 @@ export const api = {
       greenApiInstanceId: string | null; greenApiTokenSet: boolean;
       greenApiWebhookUrl: string | null;
     }>('/api/tenant/settings'),
+    entitlements: () => request<{
+      plan: string;
+      entitlements: { features: Record<string, boolean> } & Record<string, unknown>;
+      usage: { users: number; leads: number; lines: number };
+    }>('/api/tenant/entitlements'),
     updateGreenApi: (data: { greenApiInstanceId: string; greenApiToken: string; greenApiWebhookUrl?: string }) =>
       request('/api/tenant/green-api', { method: 'PATCH', body: JSON.stringify(data) }),
     testGreenApi: (data: { greenApiInstanceId: string; greenApiToken: string }) =>

@@ -30,12 +30,13 @@ const NAV: { view: ViewMode; label: string; icon: typeof LayoutDashboard }[] = [
 const footerBtn = 'flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors';
 
 export function AppSidebar({
-  viewMode, onSelect, userName, role, isSuperAdmin, onSettings, onSuperAdmin, onLogout,
+  viewMode, onSelect, userName, role, features, isSuperAdmin, onSettings, onSuperAdmin, onLogout,
 }: {
   viewMode: ViewMode;
   onSelect: (v: ViewMode) => void;
   userName?: string;
   role?: 'SUPER_ADMIN' | 'ADMIN' | 'AGENT';
+  features?: Record<string, boolean> | null;
   isSuperAdmin: boolean;
   onSettings: () => void;
   onSuperAdmin: () => void;
@@ -45,8 +46,15 @@ export function AppSidebar({
   // The company dashboard is a manager overview — hide it from plain agents, who
   // only work with their own assigned conversations.
   const isManager = role === 'ADMIN' || role === 'SUPER_ADMIN';
+  // Paid-upgrade modules are hidden until the plan includes them. `listings` (דירות
+  // יד שניה) is off for all tiers today — a future upsell.
+  const gated: Partial<Record<ViewMode, string>> = { listings: 'listings' };
   const items = NAV
     .filter(({ view }) => isManager || view !== 'dashboard')
+    .filter(({ view }) => {
+      const feat = gated[view];
+      return !feat || (features ? Boolean(features[feat]) : false);
+    })
     .map(({ view, label, icon: Icon }) => ({
       key: view,
       label,

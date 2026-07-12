@@ -3,7 +3,7 @@ import type { Server as SocketIOServer } from 'socket.io';
 import { prisma } from '../lib/prisma';
 import { normalizePhone } from './leads';
 import { SOCKET_EVENTS, emitScoped } from '../socket';
-import { featuresFor } from '../lib/entitlements';
+import { featuresFor, requireFeature } from '../lib/entitlements';
 
 // Real-estate domain API (phase-2). All routes tenant-scoped via req.user.tenantId.
 export const realestateRouter = Router();
@@ -215,14 +215,14 @@ realestateRouter.delete('/projects/:id', async (req, res) => {
 });
 
 // ─── Listings (resale) ────────────────────────────────────────────────────────
-realestateRouter.get('/listings', async (req, res) => {
+realestateRouter.get('/listings', requireFeature('listings'), async (req, res) => {
   try {
     const listings = await prisma.listing.findMany({ where: { tenantId: tid(req) }, orderBy: { createdAt: 'desc' } });
     return res.json(listings);
   } catch (e) { return fail(res, e, 'GET /listings'); }
 });
 
-realestateRouter.post('/listings', async (req, res) => {
+realestateRouter.post('/listings', requireFeature('listings'), async (req, res) => {
   try {
     const b = req.body;
     if (!b.title?.trim()) return res.status(400).json({ error: 'נדרשת כותרת' });
@@ -243,7 +243,7 @@ realestateRouter.post('/listings', async (req, res) => {
   } catch (e) { return fail(res, e, 'POST /listings'); }
 });
 
-realestateRouter.patch('/listings/:id', async (req, res) => {
+realestateRouter.patch('/listings/:id', requireFeature('listings'), async (req, res) => {
   try {
     const existing = await prisma.listing.findFirst({ where: { id: req.params.id, tenantId: tid(req) } });
     if (!existing) return res.status(404).json({ error: 'דירה לא נמצאה' });
@@ -276,7 +276,7 @@ realestateRouter.patch('/listings/:id', async (req, res) => {
   } catch (e) { return fail(res, e, 'PATCH /listings/:id'); }
 });
 
-realestateRouter.delete('/listings/:id', async (req, res) => {
+realestateRouter.delete('/listings/:id', requireFeature('listings'), async (req, res) => {
   try {
     const existing = await prisma.listing.findFirst({ where: { id: req.params.id, tenantId: tid(req) } });
     if (!existing) return res.status(404).json({ error: 'דירה לא נמצאה' });
@@ -453,7 +453,7 @@ async function fetchYad2ViaApify(
     });
 }
 
-realestateRouter.post('/listings/search', async (req, res) => {
+realestateRouter.post('/listings/search', requireFeature('listings'), async (req, res) => {
   try {
     const tenantId = tid(req);
     const city = (req.body.city || '').trim();

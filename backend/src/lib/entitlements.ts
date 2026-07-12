@@ -17,6 +17,7 @@ export interface Entitlements {
     analytics: boolean;
     googleCalendar: boolean;
     apifyLive: boolean;   // live Yad2 listings pull vs. the local estimator
+    listings: boolean;    // the "דירות יד שניה" module (nav + screen). Off = a future paid upsell.
     apiAccess: boolean;
   };
 }
@@ -27,17 +28,19 @@ export const ENTITLEMENTS: Record<TenantPlan, Entitlements> = {
   TRIAL: {
     maxLines: 1, maxUsers: 2, maxLeads: 100, dailyMsgCapPerLine: 50,
     maxTemplates: 5, maxAutomations: 0,
-    features: { multiLine: false, automations: false, analytics: false, googleCalendar: false, apifyLive: false, apiAccess: false },
+    features: { multiLine: false, automations: false, analytics: false, googleCalendar: false, apifyLive: false, listings: false, apiAccess: false },
   },
   BASIC: {
     maxLines: 1, maxUsers: 3, maxLeads: 1_500, dailyMsgCapPerLine: 150,
     maxTemplates: 20, maxAutomations: 2,
-    features: { multiLine: false, automations: true, analytics: true, googleCalendar: true, apifyLive: false, apiAccess: false },
+    features: { multiLine: false, automations: true, analytics: true, googleCalendar: true, apifyLive: false, listings: false, apiAccess: false },
   },
   PRO: {
     maxLines: 5, maxUsers: 15, maxLeads: 25_000, dailyMsgCapPerLine: 300,
     maxTemplates: INF, maxAutomations: INF,
-    features: { multiLine: true, automations: true, analytics: true, googleCalendar: true, apifyLive: true, apiAccess: true },
+    // `listings` is intentionally OFF for now — the second-hand module ships hidden as a
+    // future paid upgrade. Flip this to `true` when it's ready to sell.
+    features: { multiLine: true, automations: true, analytics: true, googleCalendar: true, apifyLive: true, listings: false, apiAccess: true },
   },
 };
 
