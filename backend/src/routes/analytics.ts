@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import { isManager } from '../middleware/auth';
 
@@ -6,10 +7,18 @@ export const analyticsRouter = Router();
 
 analyticsRouter.get('/overview', async (req: Request, res: Response) => {
   try {
-    // The overview is a company-wide dashboard (per-agent leaderboard, all leads) —
-    // managers only. Agents work from their own scoped lists instead.
-    if (!isManager(req)) return res.status(403).json({ error: 'גישה מוגבלת למנהלים' });
     const tenantId = req.user!.tenantId;
+    // Managers see the whole company; an AGENT gets the same dashboard scoped to their
+    // own leads/messages (no other agent's data).
+    const agent = isManager(req) ? null : req.user!.username;
+    const leadScope = agent ? { assignedTo: agent } : {};
+    const msgScope = agent ? { lead: { assignedTo: agent } } : {};
+    // Raw-SQL fragments for the scoped queries (empty for managers).
+    const leadSql = agent ? Prisma.sql`AND "assignedTo" = ${agent}` : Prisma.empty;
+    const inMsgSql = agent
+      ? Prisma.sql`AND in_msg."leadId" IN (SELECT id FROM "Lead" WHERE "tenantId" = ${tenantId} AND "assignedTo" = ${agent})`
+      : Prisma.empty;
+
     const now = new Date();
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
     const weekStart = new Date(todayStart);
@@ -19,15 +28,15 @@ analyticsRouter.get('/overview', async (req: Request, res: Response) => {
       totalLeads, newToday, hotLeads, closedLeads, lostLeads, inProgressLeads,
       messagesToday, messagesThisWeek, avgResponseTime, leadsByStatus, leadsThisWeek, agentLeads, projectsData,
     ] = await Promise.all([
-      prisma.lead.count({ where: { tenantId } }),
-      prisma.lead.count({ where: { tenantId, createdAt: { gte: todayStart } } }),
-      prisma.lead.count({ where: { tenantId, status: 'HOT' } }),
-      prisma.lead.count({ where: { tenantId, status: 'CLOSED' } }),
-      prisma.lead.count({ where: { tenantId, status: 'LOST' } }),
-      prisma.lead.count({ where: { tenantId, status: 'IN_PROGRESS' } }),
-      prisma.message.count({ where: { tenantId, timestamp: { gte: todayStart } } }),
-      prisma.message.count({ where: { tenantId, timestamp: { gte: weekStart } } }),
-      prisma.$queryRaw<Array<{ avg_minutes: number }>>`
+      prisma.lead.count({ where: { tenantId, ...leadScope } }),
+      prisma.lead.count({ where: { tenantId, ...leadScope, createdAt: { gte: todayStart } } }),
+      prisma.lead.count({ where: { tenantId, ...leadScope, status: 'HOT' } }),
+      prisma.lead.count({ where: { tenantId, ...leadScope, status: 'CLOSED' } }),
+      prisma.lead.count({ where: { tenantId, ...leadScope, status: 'LOST' } }),
+      prisma.lead.count({ where: { tenantId, ...leadScope, status: 'IN_PROGRESS' } }),
+      prisma.message.count({ where: { tenantId, ...msgScope, timestamp: { gte: todayStart } } }),
+      prisma.message.count({ where: { tenantId, ...msgScope, timestamp: { gte: weekStart } } }),
+      prisma.$queryRaw<Array<{ avg_minutes: number }>>(Prisma.sql`
         SELECT AVG(EXTRACT(EPOCH FROM (out_msg.timestamp - in_msg.timestamp)) / 60) as avg_minutes
         FROM "Message" in_msg
         JOIN "Message" out_msg ON out_msg."leadId" = in_msg."leadId"
@@ -36,28 +45,34 @@ analyticsRouter.get('/overview', async (req: Request, res: Response) => {
         WHERE in_msg.direction = 'inbound'
           AND in_msg."tenantId" = ${tenantId}
           AND in_msg.timestamp >= ${weekStart}
-      `,
-      prisma.lead.groupBy({ by: ['status'], where: { tenantId }, _count: { status: true } }),
-      prisma.$queryRaw<Array<{ day: string; count: number }>>`
+          ${inMsgSql}
+      `),
+      prisma.lead.groupBy({ by: ['status'], where: { tenantId, ...leadScope }, _count: { status: true } }),
+      prisma.$queryRaw<Array<{ day: string; count: number }>>(Prisma.sql`
         SELECT DATE("createdAt") as day, COUNT(*)::int as count
         FROM "Lead"
         WHERE "tenantId" = ${tenantId} AND "createdAt" >= ${weekStart}
+          ${leadSql}
         GROUP BY DATE("createdAt")
         ORDER BY day ASC
-      `,
-      // Agents: leads per representative
-      prisma.lead.groupBy({
-        by: ['assignedTo'],
-        where: { tenantId, assignedTo: { not: null } },
-        _count: { id: true },
-        orderBy: { _count: { id: 'desc' } },
-      }),
-      // Projects with lead counts
-      prisma.project.findMany({
-        where: { tenantId, active: true },
-        select: { id: true, name: true, color: true, _count: { select: { leads: true } } },
-        orderBy: { createdAt: 'asc' },
-      }),
+      `),
+      // Per-agent leaderboard — managers only (an agent doesn't see other agents).
+      agent
+        ? Promise.resolve([] as Array<{ assignedTo: string | null; _count: { id: number } }>)
+        : prisma.lead.groupBy({
+            by: ['assignedTo'],
+            where: { tenantId, assignedTo: { not: null } },
+            _count: { id: true },
+            orderBy: { _count: { id: 'desc' } },
+          }),
+      // Projects with lead counts — managers only (aggregate across all agents).
+      agent
+        ? Promise.resolve([] as Array<{ id: string; name: string; color: string; _count: { leads: number } }>)
+        : prisma.project.findMany({
+            where: { tenantId, active: true },
+            select: { id: true, name: true, color: true, _count: { select: { leads: true } } },
+            orderBy: { createdAt: 'asc' },
+          }),
     ]);
 
     const avgMinutes = avgResponseTime[0]?.avg_minutes
@@ -65,6 +80,7 @@ analyticsRouter.get('/overview', async (req: Request, res: Response) => {
       : null;
 
     return res.json({
+      scope: agent ? 'agent' : 'company',
       totals: { leads: totalLeads, newToday, hot: hotLeads, closed: closedLeads, lost: lostLeads, inProgress: inProgressLeads },
       messages: { today: messagesToday, thisWeek: messagesThisWeek },
       avgResponseMinutes: avgMinutes,

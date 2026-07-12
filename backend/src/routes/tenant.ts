@@ -5,9 +5,21 @@ import { checkLimit, entitlementsFor } from '../lib/entitlements';
 
 export const tenantRouter = Router();
 
-// Only a tenant admin (or the platform super-admin) may change company-wide settings.
+const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN'];
+const MANAGER_ROLES = ['MANAGER', 'ADMIN', 'SUPER_ADMIN'];
+
+// Company-level actions reserved for true admins (profile, plan, managing admins).
 function requireTenantAdmin(req: Request, res: Response): boolean {
-  if (req.user!.role !== 'ADMIN' && req.user!.role !== 'SUPER_ADMIN') {
+  if (!ADMIN_ROLES.includes(req.user!.role)) {
+    res.status(403).json({ error: 'רק אדמין יכול לבצע פעולה זו' });
+    return false;
+  }
+  return true;
+}
+
+// Manager-level actions (WhatsApp connection, agent management, templates).
+function requireTenantManager(req: Request, res: Response): boolean {
+  if (!MANAGER_ROLES.includes(req.user!.role)) {
     res.status(403).json({ error: 'רק מנהל יכול לבצע פעולה זו' });
     return false;
   }
@@ -72,9 +84,9 @@ tenantRouter.patch('/profile', async (req: Request, res: Response) => {
   return res.json({ success: true, tenant });
 });
 
-// PATCH /api/tenant/green-api — update Green API credentials (admin only)
+// PATCH /api/tenant/green-api — update Green API credentials (manager or admin)
 tenantRouter.patch('/green-api', async (req: Request, res: Response) => {
-  if (!requireTenantAdmin(req, res)) return;
+  if (!requireTenantManager(req, res)) return;
   const { greenApiInstanceId, greenApiToken, greenApiWebhookUrl } = req.body;
 
   // The token is write-only: an empty/omitted token keeps the stored one, so the
@@ -173,11 +185,9 @@ tenantRouter.get('/users', async (req: Request, res: Response) => {
   return res.json(users);
 });
 
-// POST /api/tenant/users — add a new agent to this tenant (admin only)
+// POST /api/tenant/users — add a user (manager or admin)
 tenantRouter.post('/users', async (req: Request, res: Response) => {
-  if (req.user!.role !== 'ADMIN' && req.user!.role !== 'SUPER_ADMIN') {
-    return res.status(403).json({ error: 'רק מנהל יכול להוסיף משתמשים' });
-  }
+  if (!requireTenantManager(req, res)) return;
   if (!(await checkLimit(req, res, 'user'))) return; // plan seat limit
 
   const bcrypt = await import('bcryptjs');
@@ -185,8 +195,10 @@ tenantRouter.post('/users', async (req: Request, res: Response) => {
 
   if (!username?.trim() || !password) return res.status(400).json({ error: 'נדרשים שם משתמש וסיסמה' });
 
-  // A tenant admin may only create AGENT or ADMIN users — never a platform SUPER_ADMIN.
-  const safeRole = role === 'ADMIN' ? 'ADMIN' : 'AGENT';
+  // Admins may create AGENT / MANAGER / ADMIN. A MANAGER may only create AGENTs.
+  const actorIsAdmin = ADMIN_ROLES.includes(req.user!.role);
+  const requested = role === 'ADMIN' ? 'ADMIN' : role === 'MANAGER' ? 'MANAGER' : 'AGENT';
+  const safeRole = actorIsAdmin ? requested : 'AGENT';
 
   const existing = await prisma.user.findFirst({
     where: { tenantId: req.user!.tenantId, username: username.trim() },
@@ -204,18 +216,25 @@ tenantRouter.post('/users', async (req: Request, res: Response) => {
 
 // PATCH /api/tenant/users/:id — toggle active / change role
 tenantRouter.patch('/users/:id', async (req: Request, res: Response) => {
-  if (req.user!.role !== 'ADMIN' && req.user!.role !== 'SUPER_ADMIN') {
-    return res.status(403).json({ error: 'רק מנהל יכול לערוך משתמשים' });
-  }
+  if (!requireTenantManager(req, res)) return;
 
   const user = await prisma.user.findFirst({
     where: { id: req.params.id, tenantId: req.user!.tenantId },
   });
   if (!user) return res.status(404).json({ error: 'משתמש לא נמצא' });
 
+  const actorIsAdmin = ADMIN_ROLES.includes(req.user!.role);
+  // A manager may only act on AGENTs — never touch a manager/admin.
+  if (!actorIsAdmin && user.role !== 'AGENT') {
+    return res.status(403).json({ error: 'רק אדמין יכול לערוך מנהלים ואדמינים' });
+  }
+
   const { active, role } = req.body;
-  // A tenant admin may only assign AGENT or ADMIN — never escalate to SUPER_ADMIN.
-  const safeRole = role === undefined ? undefined : role === 'ADMIN' ? 'ADMIN' : 'AGENT';
+  // Role changes are admin-only (AGENT/MANAGER/ADMIN; never SUPER_ADMIN). Managers
+  // can toggle active on agents but cannot change roles.
+  const safeRole = (role === undefined || !actorIsAdmin)
+    ? undefined
+    : role === 'ADMIN' ? 'ADMIN' : role === 'MANAGER' ? 'MANAGER' : 'AGENT';
   const updated = await prisma.user.update({
     where: { id: req.params.id },
     data: { ...(active !== undefined && { active }), ...(safeRole && { role: safeRole }) },
@@ -225,11 +244,9 @@ tenantRouter.patch('/users/:id', async (req: Request, res: Response) => {
   return res.json(updated);
 });
 
-// DELETE /api/tenant/users/:id — remove an agent from this tenant (admin only)
+// DELETE /api/tenant/users/:id — remove a user (manager or admin)
 tenantRouter.delete('/users/:id', async (req: Request, res: Response) => {
-  if (req.user!.role !== 'ADMIN' && req.user!.role !== 'SUPER_ADMIN') {
-    return res.status(403).json({ error: 'רק מנהל יכול להסיר משתמשים' });
-  }
+  if (!requireTenantManager(req, res)) return;
   if (req.params.id === req.user!.userId) {
     return res.status(400).json({ error: 'לא ניתן להסיר את עצמך' });
   }
@@ -238,9 +255,12 @@ tenantRouter.delete('/users/:id', async (req: Request, res: Response) => {
     where: { id: req.params.id, tenantId: req.user!.tenantId },
   });
   if (!user) return res.status(404).json({ error: 'משתמש לא נמצא' });
-  // A tenant admin cannot remove a platform super-admin.
   if (user.role === 'SUPER_ADMIN') {
     return res.status(403).json({ error: 'לא ניתן להסיר מנהל-על' });
+  }
+  // A manager may only remove AGENTs.
+  if (!ADMIN_ROLES.includes(req.user!.role) && user.role !== 'AGENT') {
+    return res.status(403).json({ error: 'רק אדמין יכול להסיר מנהלים ואדמינים' });
   }
 
   await prisma.user.delete({ where: { id: req.params.id } });

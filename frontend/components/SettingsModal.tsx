@@ -5,6 +5,7 @@ import { X, ShieldCheck, Lock, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Chec
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
 import { useConfirm } from './useConfirm';
+import { decodeToken } from '@/lib/auth';
 import type { Template } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -28,6 +29,10 @@ type Tab = 'profile' | 'agents' | 'templates' | '2fa' | 'password' | 'green-api'
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
   const [tab, setTab] = useState<Tab>('profile');
+  // Managers (MANAGER/ADMIN/SUPER_ADMIN) get the team/WhatsApp/templates tabs; plain
+  // agents only get their personal tabs (profile, calendar, 2FA, password).
+  const role = decodeToken()?.role;
+  const isManager = role === 'MANAGER' || role === 'ADMIN' || role === 'SUPER_ADMIN';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
@@ -41,9 +46,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
 
         <div className="flex border-b border-surface-border">
           <TabBtn active={tab === 'profile'} onClick={() => setTab('profile')} icon={<UserCircle className="w-3.5 h-3.5" />} label="פרופיל" />
-          <TabBtn active={tab === 'agents'} onClick={() => setTab('agents')} icon={<Users className="w-3.5 h-3.5" />} label="נציגים" />
-          <TabBtn active={tab === 'templates'} onClick={() => setTab('templates')} icon={<MessageSquareText className="w-3.5 h-3.5" />} label="תבניות" />
-          <TabBtn active={tab === 'green-api'} onClick={() => setTab('green-api')} icon={<Wifi className="w-3.5 h-3.5" />} label="Green API" />
+          {isManager && <TabBtn active={tab === 'agents'} onClick={() => setTab('agents')} icon={<Users className="w-3.5 h-3.5" />} label="נציגים" />}
+          {isManager && <TabBtn active={tab === 'templates'} onClick={() => setTab('templates')} icon={<MessageSquareText className="w-3.5 h-3.5" />} label="תבניות" />}
+          {isManager && <TabBtn active={tab === 'green-api'} onClick={() => setTab('green-api')} icon={<Wifi className="w-3.5 h-3.5" />} label="Green API" />}
           <TabBtn active={tab === 'google'} onClick={() => setTab('google')} icon={<CalendarDays className="w-3.5 h-3.5" />} label="יומן" />
           <TabBtn active={tab === '2fa'} onClick={() => setTab('2fa')} icon={<ShieldCheck className="w-3.5 h-3.5" />} label="2FA" />
           <TabBtn active={tab === 'password'} onClick={() => setTab('password')} icon={<Lock className="w-3.5 h-3.5" />} label="סיסמה" />
@@ -196,7 +201,9 @@ function ProfileSettings() {
 
   if (loading) return <div className="p-6 text-center text-slate-400 text-sm">טוען...</div>;
 
-  const roleLabels: Record<string, string> = { SUPER_ADMIN: 'מנהל-על', ADMIN: 'מנהל', AGENT: 'נציג' };
+  const roleLabels: Record<string, string> = { SUPER_ADMIN: 'מנהל-על', ADMIN: 'אדמין', MANAGER: 'מנהל', AGENT: 'נציג' };
+  // Editing company name/email is an admin-only action; managers/agents only view it.
+  const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(decodeToken()?.role ?? '');
 
   return (
     <div className="p-6 space-y-4">
@@ -210,28 +217,36 @@ function ProfileSettings() {
         </div>
       </div>
 
-      <div className="space-y-1">
-        <label className="text-xs font-semibold text-slate-600 flex items-center gap-1">
-          <Building2 className="w-3 h-3" /> שם החברה
-        </label>
-        <input type="text" value={tenantName} onChange={(e) => setTenantName(e.target.value)}
-          className={inputCls.replace('font-mono', '')} />
-      </div>
+      {isAdmin ? (
+        <>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-600 flex items-center gap-1">
+              <Building2 className="w-3 h-3" /> שם החברה
+            </label>
+            <input type="text" value={tenantName} onChange={(e) => setTenantName(e.target.value)}
+              className={inputCls.replace('font-mono', '')} />
+          </div>
 
-      <div className="space-y-1">
-        <label className="text-xs font-semibold text-slate-600 flex items-center gap-1">
-          <Mail className="w-3 h-3" /> אימייל
-        </label>
-        <input type="email" value={tenantEmail} onChange={(e) => setTenantEmail(e.target.value)}
-          dir="ltr" className={inputCls} />
-      </div>
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-600 flex items-center gap-1">
+              <Mail className="w-3 h-3" /> אימייל
+            </label>
+            <input type="email" value={tenantEmail} onChange={(e) => setTenantEmail(e.target.value)}
+              dir="ltr" className={inputCls} />
+          </div>
 
-      {error && <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2"><AlertCircle className="w-4 h-4" />{error}</div>}
+          {error && <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2"><AlertCircle className="w-4 h-4" />{error}</div>}
 
-      <button onClick={handleSave} disabled={saving}
-        className={cn('w-full py-2.5 rounded-lg text-white text-sm font-semibold transition', success ? 'bg-green-500' : 'bg-brand-600 hover:bg-brand-700', 'disabled:opacity-50')}>
-        {saving ? 'שומר...' : success ? '✓ נשמר!' : 'עדכן פרטים'}
-      </button>
+          <button onClick={handleSave} disabled={saving}
+            className={cn('w-full py-2.5 rounded-lg text-white text-sm font-semibold transition', success ? 'bg-green-500' : 'bg-brand-600 hover:bg-brand-700', 'disabled:opacity-50')}>
+            {saving ? 'שומר...' : success ? '✓ נשמר!' : 'עדכן פרטים'}
+          </button>
+        </>
+      ) : (
+        <div className="text-xs text-slate-500 bg-surface-muted rounded-lg px-3 py-2">
+          <span className="font-semibold">{tenantName}</span> · {tenantEmail}
+        </div>
+      )}
 
       <GoogleLoginLink />
     </div>
@@ -289,8 +304,10 @@ function AgentsManagement() {
   const [addError, setAddError] = useState('');
   const [addLoading, setAddLoading] = useState(false);
   const { confirm, dialog: confirmDialog } = useConfirm();
+  // Only true admins can create/edit MANAGER/ADMIN users; a MANAGER may manage AGENTs only.
+  const isAdmin = ['ADMIN', 'SUPER_ADMIN'].includes(decodeToken()?.role ?? '');
 
-  const roleLabels: Record<string, string> = { SUPER_ADMIN: 'מנהל-על', ADMIN: 'מנהל', AGENT: 'נציג' };
+  const roleLabels: Record<string, string> = { SUPER_ADMIN: 'מנהל-על', ADMIN: 'אדמין', MANAGER: 'מנהל', AGENT: 'נציג' };
 
   useEffect(() => {
     api.tenant.listUsers().then((u) => { setUsers(u); setLoading(false); }).catch(() => setLoading(false));
@@ -363,14 +380,19 @@ function AgentsManagement() {
                 {roleLabels[user.role] ?? user.role} · {user.active ? 'פעיל' : 'לא פעיל'}
               </p>
             </div>
-            <select
-              value={user.role}
-              onChange={(e) => handleChangeRole(user.id, e.target.value)}
-              className="text-[11px] border border-surface-border rounded-lg px-2 py-1 bg-surface-muted focus:outline-none focus:ring-1 focus:ring-brand-500"
-            >
-              <option value="ADMIN">מנהל</option>
-              <option value="AGENT">נציג</option>
-            </select>
+            {isAdmin && user.role !== 'SUPER_ADMIN' ? (
+              <select
+                value={user.role}
+                onChange={(e) => handleChangeRole(user.id, e.target.value)}
+                className="text-[11px] border border-surface-border rounded-lg px-2 py-1 bg-surface-muted focus:outline-none focus:ring-1 focus:ring-brand-500"
+              >
+                <option value="AGENT">נציג</option>
+                <option value="MANAGER">מנהל</option>
+                <option value="ADMIN">אדמין</option>
+              </select>
+            ) : (
+              <span className="text-[11px] text-slate-400 px-1">{roleLabels[user.role] ?? user.role}</span>
+            )}
             <button onClick={() => handleToggleActive(user.id, user.active)}
               title={user.active ? 'נעילת משתמש' : 'שחרור משתמש'}
               className={cn('transition', user.active ? 'text-green-500 hover:text-red-500' : 'text-slate-300 hover:text-green-500')}>
@@ -400,14 +422,17 @@ function AgentsManagement() {
               placeholder="סיסמה ראשונית" dir="ltr"
               className={inputCls} />
           </div>
-          <div className="space-y-1">
-            <label className="text-xs font-semibold text-slate-600">תפקיד</label>
-            <select value={newRole} onChange={(e) => setNewRole(e.target.value)}
-              className={inputCls}>
-              <option value="AGENT">נציג</option>
-              <option value="ADMIN">מנהל</option>
-            </select>
-          </div>
+          {isAdmin && (
+            <div className="space-y-1">
+              <label className="text-xs font-semibold text-slate-600">תפקיד</label>
+              <select value={newRole} onChange={(e) => setNewRole(e.target.value)}
+                className={inputCls}>
+                <option value="AGENT">נציג</option>
+                <option value="MANAGER">מנהל</option>
+                <option value="ADMIN">אדמין</option>
+              </select>
+            </div>
+          )}
           {addError && <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 rounded-lg px-3 py-2"><AlertCircle className="w-3 h-3" />{addError}</div>}
           <div className="flex gap-2">
             <button onClick={handleAddUser} disabled={addLoading}

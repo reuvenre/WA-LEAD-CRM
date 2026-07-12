@@ -49,6 +49,7 @@ enum MessageStatus {
 enum UserRole {
   SUPER_ADMIN
   ADMIN
+  MANAGER
   AGENT
 }
 

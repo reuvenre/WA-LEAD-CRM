@@ -35,7 +35,7 @@ export function AppSidebar({
   viewMode: ViewMode;
   onSelect: (v: ViewMode) => void;
   userName?: string;
-  role?: 'SUPER_ADMIN' | 'ADMIN' | 'AGENT';
+  role?: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'AGENT';
   features?: Record<string, boolean> | null;
   isSuperAdmin: boolean;
   onSettings: () => void;
@@ -43,14 +43,10 @@ export function AppSidebar({
   onLogout: () => void;
 }) {
   const roleLabel = role ? ROLE_LABELS[role] ?? role : '';
-  // The company dashboard is a manager overview — hide it from plain agents, who
-  // only work with their own assigned conversations.
-  const isManager = role === 'ADMIN' || role === 'SUPER_ADMIN';
   // Paid-upgrade modules are hidden until the plan includes them. `listings` (דירות
   // יד שניה) is off for all tiers today — a future upsell.
   const gated: Partial<Record<ViewMode, string>> = { listings: 'listings' };
   const items = NAV
-    .filter(({ view }) => isManager || view !== 'dashboard')
     .filter(({ view }) => {
       const feat = gated[view];
       return !feat || (features ? Boolean(features[feat]) : false);

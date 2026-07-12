@@ -7,7 +7,7 @@ export interface AuthPayload {
   tenantId: string;
   tenantName: string;
   username: string;
-  role: 'SUPER_ADMIN' | 'ADMIN' | 'AGENT';
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'AGENT';
   step?: '2fa_pending';
 }
 
@@ -49,9 +49,16 @@ export function requireSuperAdmin(req: Request, res: Response, next: NextFunctio
 }
 
 // ─── Per-agent visibility (RBAC) ──────────────────────────────────────────────
-// Managers (ADMIN / SUPER_ADMIN) see every conversation in the tenant. A plain
-// AGENT sees only leads assigned to them (Lead.assignedTo === their username).
+// Managers (MANAGER / ADMIN / SUPER_ADMIN) see every conversation in the tenant and
+// can manage agents. A plain AGENT sees only leads assigned to them.
 export function isManager(req: Request): boolean {
+  const r = req.user!.role;
+  return r === 'MANAGER' || r === 'ADMIN' || r === 'SUPER_ADMIN';
+}
+
+// The most sensitive company-level actions (profile, plan, managing admins/managers)
+// stay with true admins only — a MANAGER is deliberately below this.
+export function isAdmin(req: Request): boolean {
   return req.user!.role === 'ADMIN' || req.user!.role === 'SUPER_ADMIN';
 }
 

@@ -3,7 +3,7 @@ export interface TokenPayload {
   tenantId: string;
   tenantName: string;
   username: string;
-  role: 'SUPER_ADMIN' | 'ADMIN' | 'AGENT';
+  role: 'SUPER_ADMIN' | 'ADMIN' | 'MANAGER' | 'AGENT';
   exp: number;
 }
 
@@ -40,6 +40,7 @@ export function decodeToken(): TokenPayload | null {
 
 export const ROLE_LABELS: Record<string, string> = {
   SUPER_ADMIN: 'מנהל-על',
-  ADMIN: 'מנהל',
+  ADMIN: 'אדמין',
+  MANAGER: 'מנהל',
   AGENT: 'נציג',
 };
