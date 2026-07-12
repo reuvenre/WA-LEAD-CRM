@@ -1,10 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
-import { ChevronRight, ChevronLeft, Calendar, Clock, User, Phone, X, Save, MessageSquare, LayoutGrid, FolderKanban, BarChart2 } from 'lucide-react';
+import { useState, useEffect, useCallback } from 'react';
+import { ChevronRight, ChevronLeft, Calendar, Clock, User, Phone, X, Save, MessageSquare, LayoutGrid, FolderKanban, BarChart2, Plus, Search } from 'lucide-react';
 import { cn, STATUS_CONFIG } from '@/lib/utils';
 import { api } from '@/lib/api';
 import type { LeadStatus } from '@/types';
+
+// A Date → the value an <input type="datetime-local"> expects (local, no timezone).
+function toLocalInput(d: Date) {
+  const p = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
+}
 
 interface CalendarMeeting {
   id: string;
@@ -29,16 +35,19 @@ export function CalendarView({ onLeadClick, onNavigate }: CalendarViewProps) {
   const [meetings, setMeetings] = useState<CalendarMeeting[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
+  const [showNew, setShowNew] = useState(false);
 
   const monthStr = `${year}-${String(month + 1).padStart(2, '0')}`;
 
-  useEffect(() => {
+  const loadMeetings = useCallback(() => {
     setLoading(true);
     api.leads.calendar(monthStr).then((data) => {
       setMeetings(data);
       setLoading(false);
     }).catch(() => setLoading(false));
   }, [monthStr]);
+
+  useEffect(() => { loadMeetings(); }, [loadMeetings]);
 
   const goNext = () => {
     if (month === 11) { setMonth(0); setYear(y => y + 1); }
@@ -98,6 +107,10 @@ export function CalendarView({ onLeadClick, onNavigate }: CalendarViewProps) {
           <h2 className="text-base font-bold text-slate-800">יומן פגישות</h2>
         </div>
         <div className="flex items-center gap-2">
+          <button onClick={() => setShowNew(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg transition">
+            <Plus className="w-3.5 h-3.5" /> קבע פגישה
+          </button>
           <button onClick={goToday}
             className="px-3 py-1.5 text-xs font-semibold text-brand-600 bg-brand-50 rounded-lg hover:bg-brand-100 transition">
             היום
@@ -269,6 +282,120 @@ export function CalendarView({ onLeadClick, onNavigate }: CalendarViewProps) {
             </div>
           </div>
         )}
+      </div>
+
+      {showNew && (
+        <NewMeetingModal
+          defaultDate={selectedDay ? new Date(year, month, selectedDay, 12, 0) : null}
+          onClose={() => setShowNew(false)}
+          onSaved={() => { setShowNew(false); loadMeetings(); }}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Schedule a meeting: pick a client, set date/time, save onto the lead ──────
+function NewMeetingModal({ defaultDate, onClose, onSaved }: {
+  defaultDate: Date | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [query, setQuery] = useState('');
+  const [results, setResults] = useState<Array<{ id: string; name: string; phone: string }>>([]);
+  const [selected, setSelected] = useState<{ id: string; name: string; phone: string } | null>(null);
+  const [when, setWhen] = useState(defaultDate ? toLocalInput(defaultDate) : '');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  // Live search over the client/contact list (debounced).
+  useEffect(() => {
+    if (selected) return;
+    const t = setTimeout(() => {
+      api.leads.list({ search: query.trim() || undefined })
+        .then((r) => setResults(r.leads.map((l) => ({ id: l.id, name: l.name, phone: l.phone }))))
+        .catch(() => {});
+    }, 250);
+    return () => clearTimeout(t);
+  }, [query, selected]);
+
+  const save = async () => {
+    if (!selected) { setError('בחר לקוח מהרשימה'); return; }
+    if (!when) { setError('בחר תאריך ושעה'); return; }
+    setSaving(true); setError('');
+    try {
+      await api.leads.update(selected.id, { meetingDate: new Date(when).toISOString(), meetingNotes: notes.trim() || undefined });
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'שמירת הפגישה נכשלה');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4" dir="rtl" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-surface-border">
+          <h3 className="font-bold text-slate-800 text-base">קביעת פגישה</h3>
+          <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-slate-100 text-slate-400"><X className="w-4 h-4" /></button>
+        </div>
+
+        <div className="p-5 space-y-4 max-h-[75vh] overflow-y-auto">
+          {/* Client picker */}
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-600">לקוח</label>
+            {selected ? (
+              <div className="flex items-center justify-between gap-2 bg-brand-50 rounded-lg px-3 py-2">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-800 truncate">{selected.name}</p>
+                  <p className="text-[11px] text-slate-500 font-mono" dir="ltr">{selected.phone}</p>
+                </div>
+                <button onClick={() => { setSelected(null); setQuery(''); }} className="text-xs font-semibold text-brand-600 hover:text-brand-700 flex-shrink-0">שנה</button>
+              </div>
+            ) : (
+              <>
+                <div className="relative">
+                  <Search className="w-4 h-4 text-slate-400 absolute top-1/2 -translate-y-1/2 right-3" />
+                  <input autoFocus value={query} onChange={(e) => setQuery(e.target.value)} placeholder="חפש לפי שם או טלפון…"
+                    className="w-full pr-9 pl-3 py-2 text-sm rounded-lg border border-surface-border bg-surface-muted focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                </div>
+                <div className="max-h-44 overflow-y-auto rounded-lg border border-surface-border divide-y divide-slate-100">
+                  {results.length === 0 ? (
+                    <p className="text-xs text-slate-400 text-center py-4">אין תוצאות</p>
+                  ) : results.map((l) => (
+                    <button key={l.id} onClick={() => setSelected(l)}
+                      className="w-full text-right px-3 py-2 hover:bg-surface-subtle transition flex items-center justify-between gap-2">
+                      <span className="text-sm text-slate-700 truncate">{l.name}</span>
+                      <span className="text-[11px] text-slate-400 font-mono flex-shrink-0" dir="ltr">{l.phone}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-600">תאריך ושעה</label>
+            <input type="datetime-local" value={when} onChange={(e) => setWhen(e.target.value)}
+              className="w-full px-3 py-2 text-sm rounded-lg border border-surface-border bg-surface-muted focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          </div>
+
+          <div className="space-y-1">
+            <label className="text-xs font-semibold text-slate-600">הערות לפגישה</label>
+            <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="נושא הפגישה, כתובת הנכס…"
+              className="w-full px-3 py-2 text-sm rounded-lg border border-surface-border bg-surface-muted resize-none focus:outline-none focus:ring-2 focus:ring-brand-500" />
+          </div>
+
+          {error && <p className="text-xs text-red-600">{error}</p>}
+
+          <button onClick={save} disabled={saving}
+            className="w-full py-2.5 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold transition flex items-center justify-center gap-1.5">
+            <Save className="w-4 h-4" /> {saving ? 'שומר…' : 'שמור פגישה'}
+          </button>
+          <p className="text-[11px] text-slate-400 text-center">הפגישה תסונכרן אוטומטית ליומן Google (אם מחובר)</p>
+        </div>
       </div>
     </div>
   );
