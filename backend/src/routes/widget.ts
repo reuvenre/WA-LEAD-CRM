@@ -11,6 +11,7 @@ import { entitlementsFor } from '../lib/entitlements';
 import { logActivity } from '../lib/activity';
 import { pickRoundRobinAssignee } from '../lib/assignment';
 import { handleInboundAutoReply } from '../lib/autoReply';
+import { notifyLeadEvent } from '../lib/push';
 
 export const widgetRouter = Router();
 
@@ -135,6 +136,7 @@ widgetRouter.post('/message', async (req: Request, res: Response) => {
 
     // Auto-replies (greeting on the first inbound / off-hours / away) run for webchat too.
     void handleInboundAutoReply({ tenantId: tenant.id, lead: { id: lead.id, lastAutoReplyAt: lead.lastAutoReplyAt, channel: 'WEBCHAT' }, isNewLead: priorCount === 0 });
+    void notifyLeadEvent(tenant.id, lead.assignedTo, { title: `${lead.name} (אתר)`, body: content, leadId: lead.id });
 
     return res.json({ ok: true, message: mapMsg(message) });
   } catch (error) {

@@ -7,6 +7,7 @@ import { logActivity } from '../lib/activity';
 import { pickRoundRobinAssignee } from '../lib/assignment';
 import { handleInboundAutoReply } from '../lib/autoReply';
 import { triggerAutomations } from '../lib/automations';
+import { notifyLeadEvent } from '../lib/push';
 
 export const webhookRouter = Router();
 
@@ -156,6 +157,8 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
     void handleInboundAutoReply({ tenantId, lead, isNewLead: !existingLead });
     // The 'lead.message_received' automation event was declared but never fired until now.
     void triggerAutomations('lead.message_received', { lead, message }, tenantId);
+    // Push notification to the managers + assigned agent (mirrors emitScoped).
+    void notifyLeadEvent(tenantId, lead.assignedTo, { title: lead.name, body: content, leadId: lead.id });
   }
 
   return res.status(200).json({ received: true });

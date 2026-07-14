@@ -239,6 +239,14 @@ export const api = {
     disconnect: () => request<{ success: boolean }>('/api/google/disconnect', { method: 'POST' }),
   },
 
+  push: {
+    publicKey: () => request<{ key: string | null; enabled: boolean }>('/api/push/public-key'),
+    subscribe: (subscription: PushSubscriptionJSON, userAgent?: string) =>
+      request<{ success: boolean }>('/api/push/subscribe', { method: 'POST', body: JSON.stringify({ subscription, userAgent }) }),
+    unsubscribe: (endpoint: string) =>
+      request<{ success: boolean }>('/api/push/unsubscribe', { method: 'POST', body: JSON.stringify({ endpoint }) }),
+  },
+
   auth: {
     forgotPassword: (email: string) =>
       request<{ success: boolean; message: string }>('/api/auth/forgot-password', { method: 'POST', body: JSON.stringify({ email }) }),

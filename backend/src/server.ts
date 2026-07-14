@@ -18,6 +18,7 @@ import { tenantRouter } from './routes/tenant';
 import { googleRouter } from './routes/google';
 import { waImportRouter } from './routes/waImport';
 import { widgetRouter } from './routes/widget';
+import { pushRouter } from './routes/push';
 import { WIDGET_JS } from './lib/widgetScript';
 import { startJobRunner, stopJobRunner } from './lib/jobs';
 import { requireAuth } from './middleware/auth';
@@ -111,6 +112,7 @@ app.get('/health', async (_req, res) => {
 app.use('/api/leads', requireAuth, leadsRouter);
 app.use('/api/messages', requireAuth, messagesRouter);
 app.use('/api/wa-import', requireAuth, waImportRouter);   // pull existing WhatsApp contacts + chat history
+app.use('/api/push', requireAuth, pushRouter);            // web-push subscriptions
 app.use('/api/templates', requireAuth, templatesRouter);
 app.use('/api/analytics', requireAuth, requireFeature('analytics'), analyticsRouter);
 app.use('/api/automations', requireAuth, requireFeature('automations'), automationsRouter);

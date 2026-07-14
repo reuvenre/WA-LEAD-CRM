@@ -62,6 +62,12 @@ export default function CRMPage() {
   const [toast, setToast] = useState<string | null>(null);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 3500); return () => clearTimeout(t); }, [toast]);
 
+  // Register the service worker once so the app is installable (PWA) and can receive
+  // push notifications. Harmless if push is never enabled.
+  useEffect(() => {
+    if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }, []);
+
   // Surface the result of a Google-account linking (the OAuth flow redirects here).
   useEffect(() => {
     const g = new URLSearchParams(window.location.search).get('googleLinked');

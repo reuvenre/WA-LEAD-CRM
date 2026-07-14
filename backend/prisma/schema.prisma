@@ -140,8 +140,24 @@ model User {
   activities   Activity[]
   resetTokens  PasswordResetToken[]
   linesOwned   Line[]     @relation("LineOwner")
+  pushSubs     PushSubscription[]
 
   @@unique([tenantId, username])
+}
+
+// A Web Push subscription (one per browser/device). Used to notify agents/managers
+// of new inbound messages when the app isn't focused.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
 }
 
 // ─── CRM Models (all scoped to tenant) ───────────────────────────────────────

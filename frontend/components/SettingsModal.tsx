@@ -1,10 +1,11 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, ShieldCheck, Lock, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Check, UserCircle, Building2, Mail, Users, Plus, ToggleLeft, ToggleRight, CalendarDays, Trash2, MessageSquareText, Bot, KeyRound, Globe, Copy } from 'lucide-react';
+import { X, ShieldCheck, Lock, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Check, UserCircle, Building2, Mail, Users, Plus, ToggleLeft, ToggleRight, CalendarDays, Trash2, MessageSquareText, Bot, KeyRound, Globe, Copy, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api, type AutoRepliesConfig } from '@/lib/api';
 import { useConfirm } from './useConfirm';
+import { usePush } from '@/hooks/usePush';
 import { decodeToken } from '@/lib/auth';
 import type { Template, AttributeDef } from '@/types';
 
@@ -25,7 +26,7 @@ async function authFetch(path: string, body?: object, method?: string) {
 
 interface SettingsModalProps { onClose: () => void; }
 
-type Tab = 'profile' | 'agents' | 'templates' | '2fa' | 'password' | 'green-api' | 'google' | 'engagement' | 'widget';
+type Tab = 'profile' | 'agents' | 'templates' | '2fa' | 'password' | 'green-api' | 'google' | 'engagement' | 'widget' | 'notifications';
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
   const [tab, setTab] = useState<Tab>('profile');
@@ -51,6 +52,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           {isManager && <TabBtn active={tab === 'engagement'} onClick={() => setTab('engagement')} icon={<Bot className="w-3.5 h-3.5" />} label="אוטומציה" />}
           {isManager && <TabBtn active={tab === 'widget'} onClick={() => setTab('widget')} icon={<Globe className="w-3.5 h-3.5" />} label="צ׳אט לאתר" />}
           {isManager && <TabBtn active={tab === 'green-api'} onClick={() => setTab('green-api')} icon={<Wifi className="w-3.5 h-3.5" />} label="Green API" />}
+          <TabBtn active={tab === 'notifications'} onClick={() => setTab('notifications')} icon={<Bell className="w-3.5 h-3.5" />} label="התראות" />
           <TabBtn active={tab === 'google'} onClick={() => setTab('google')} icon={<CalendarDays className="w-3.5 h-3.5" />} label="יומן" />
           <TabBtn active={tab === '2fa'} onClick={() => setTab('2fa')} icon={<ShieldCheck className="w-3.5 h-3.5" />} label="2FA" />
           <TabBtn active={tab === 'password'} onClick={() => setTab('password')} icon={<Lock className="w-3.5 h-3.5" />} label="סיסמה" />
@@ -63,11 +65,57 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           {tab === 'engagement' && <EngagementSettings />}
           {tab === 'widget' && <WidgetSettings />}
           {tab === 'green-api' && <GreenApiSettings />}
+          {tab === 'notifications' && <NotificationsSettings />}
           {tab === 'google' && <GoogleCalendarSettings />}
           {tab === '2fa' && <TwoFactorSetup />}
           {tab === 'password' && <ChangePassword onDone={onClose} />}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Push notifications ───────────────────────────────────────────────────────
+function NotificationsSettings() {
+  const { status, subscribed, busy, enable, disable } = usePush();
+
+  const Row = ({ children }: { children: React.ReactNode }) => (
+    <div className="bg-surface-subtle rounded-xl p-4 text-sm text-slate-600 leading-relaxed">{children}</div>
+  );
+
+  return (
+    <div className="p-5 space-y-4">
+      <div className="flex items-center gap-2">
+        <Bell className="w-5 h-5 text-brand-600" />
+        <h3 className="text-sm font-bold text-slate-800">התראות דחיפה</h3>
+      </div>
+      <p className="text-xs text-slate-500 leading-relaxed">
+        קבל התראה במכשיר על כל הודעה נכנסת חדשה — גם כשהאפליקציה סגורה.
+      </p>
+
+      {status === 'unsupported' && <Row>הדפדפן הנוכחי אינו תומך בהתראות דחיפה.</Row>}
+      {status === 'unconfigured' && <Row>התראות הדחיפה אינן מוגדרות במערכת עדיין (נדרשת הגדרת מפתחות VAPID בשרת).</Row>}
+      {status === 'ios-a2hs' && (
+        <Row>
+          ב-iPhone צריך קודם <b>להוסיף את האפליקציה למסך הבית</b> (בשיתוף → &quot;הוסף למסך הבית&quot;), ואז לפתוח אותה משם ולהפעיל התראות. נדרש iOS 16.4 ומעלה.
+        </Row>
+      )}
+      {status === 'denied' && <Row>ההתראות חסומות עבור אתר זה — יש לאפשר אותן בהגדרות הדפדפן ולרענן.</Row>}
+
+      {(status === 'default' || status === 'granted') && (
+        subscribed ? (
+          <div className="flex items-center justify-between bg-green-50 border border-green-200 rounded-xl p-4">
+            <span className="text-sm text-green-700 font-medium flex items-center gap-1.5"><CheckCircle className="w-4 h-4" /> התראות פעילות במכשיר זה</span>
+            <button onClick={disable} disabled={busy}
+              className="text-xs font-semibold text-slate-600 hover:text-red-600 disabled:opacity-50">כבה</button>
+          </div>
+        ) : (
+          <button onClick={enable} disabled={busy}
+            className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white text-sm font-semibold py-2.5 rounded-xl transition flex items-center justify-center gap-2">
+            <Bell className="w-4 h-4" /> {busy ? 'מפעיל…' : 'הפעל התראות במכשיר זה'}
+          </button>
+        )
+      )}
     </div>
   );
 }
