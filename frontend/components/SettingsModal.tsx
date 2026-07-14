@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, ShieldCheck, Lock, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Check, UserCircle, Building2, Mail, Users, Plus, ToggleLeft, ToggleRight, CalendarDays, Trash2, MessageSquareText } from 'lucide-react';
+import { X, ShieldCheck, Lock, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Check, UserCircle, Building2, Mail, Users, Plus, ToggleLeft, ToggleRight, CalendarDays, Trash2, MessageSquareText, Bot, KeyRound } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { api } from '@/lib/api';
+import { api, type AutoRepliesConfig } from '@/lib/api';
 import { useConfirm } from './useConfirm';
 import { decodeToken } from '@/lib/auth';
 import type { Template } from '@/types';
@@ -25,7 +25,7 @@ async function authFetch(path: string, body?: object, method?: string) {
 
 interface SettingsModalProps { onClose: () => void; }
 
-type Tab = 'profile' | 'agents' | 'templates' | '2fa' | 'password' | 'green-api' | 'google';
+type Tab = 'profile' | 'agents' | 'templates' | '2fa' | 'password' | 'green-api' | 'google' | 'engagement';
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
   const [tab, setTab] = useState<Tab>('profile');
@@ -48,6 +48,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           <TabBtn active={tab === 'profile'} onClick={() => setTab('profile')} icon={<UserCircle className="w-3.5 h-3.5" />} label="פרופיל" />
           {isManager && <TabBtn active={tab === 'agents'} onClick={() => setTab('agents')} icon={<Users className="w-3.5 h-3.5" />} label="נציגים" />}
           {isManager && <TabBtn active={tab === 'templates'} onClick={() => setTab('templates')} icon={<MessageSquareText className="w-3.5 h-3.5" />} label="תבניות" />}
+          {isManager && <TabBtn active={tab === 'engagement'} onClick={() => setTab('engagement')} icon={<Bot className="w-3.5 h-3.5" />} label="אוטומציה" />}
           {isManager && <TabBtn active={tab === 'green-api'} onClick={() => setTab('green-api')} icon={<Wifi className="w-3.5 h-3.5" />} label="Green API" />}
           <TabBtn active={tab === 'google'} onClick={() => setTab('google')} icon={<CalendarDays className="w-3.5 h-3.5" />} label="יומן" />
           <TabBtn active={tab === '2fa'} onClick={() => setTab('2fa')} icon={<ShieldCheck className="w-3.5 h-3.5" />} label="2FA" />
@@ -58,6 +59,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           {tab === 'profile' && <ProfileSettings />}
           {tab === 'agents' && <AgentsManagement />}
           {tab === 'templates' && <TemplatesManager />}
+          {tab === 'engagement' && <EngagementSettings />}
           {tab === 'green-api' && <GreenApiSettings />}
           {tab === 'google' && <GoogleCalendarSettings />}
           {tab === '2fa' && <TwoFactorSetup />}
@@ -65,6 +67,183 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
         </div>
       </div>
     </div>
+  );
+}
+
+// ─── Engagement: round-robin + auto-replies ──────────────────────────────────
+const WEEK_DAYS = [
+  { i: 0, label: 'א' }, { i: 1, label: 'ב' }, { i: 2, label: 'ג' }, { i: 3, label: 'ד' },
+  { i: 4, label: 'ה' }, { i: 5, label: 'ו' }, { i: 6, label: 'ש' },
+];
+
+const DEFAULT_AUTO: AutoRepliesConfig = {
+  greeting: { enabled: false, text: 'שלום! קיבלנו את פנייתך ונחזור אליך בהקדם 🙏' },
+  offHours: { enabled: false, text: 'תודה על פנייתך! אנחנו זמינים א׳-ה׳ 09:00-18:00 ונחזור אליך בשעות הפעילות.', days: [0, 1, 2, 3, 4], from: '09:00', to: '18:00', tz: 'Asia/Jerusalem' },
+  away: { enabled: false, text: 'מיד נחזור אליך 🙌', delayMin: 5 },
+};
+
+function EngagementSettings() {
+  const [loading, setLoading] = useState(true);
+  const [locked, setLocked] = useState(false);
+  const [roundRobin, setRoundRobin] = useState(false);
+  const [cfg, setCfg] = useState<AutoRepliesConfig>(DEFAULT_AUTO);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  useEffect(() => {
+    Promise.all([api.tenant.settings(), api.tenant.entitlements()])
+      .then(([s, e]) => {
+        setRoundRobin(s.assignmentMode === 'round_robin');
+        // Merge stored config over defaults so newly-added sub-fields always exist.
+        const stored = s.autoReplies ?? {};
+        setCfg({
+          greeting: { ...DEFAULT_AUTO.greeting!, ...stored.greeting },
+          offHours: { ...DEFAULT_AUTO.offHours!, ...stored.offHours },
+          away: { ...DEFAULT_AUTO.away!, ...stored.away },
+        });
+        setLocked(!e.entitlements.features.autoReplies);
+      })
+      .catch(() => setMsg({ ok: false, text: 'טעינת ההגדרות נכשלה' }))
+      .finally(() => setLoading(false));
+  }, []);
+
+  const save = async () => {
+    setSaving(true); setMsg(null);
+    try {
+      await api.tenant.updateEngagement({ assignmentMode: roundRobin ? 'round_robin' : 'manual', autoReplies: cfg });
+      setMsg({ ok: true, text: 'ההגדרות נשמרו ✓' });
+    } catch (err) {
+      setMsg({ ok: false, text: err instanceof Error ? err.message : 'השמירה נכשלה' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) return <div className="p-8 text-center text-sm text-slate-400">טוען…</div>;
+
+  if (locked) {
+    return (
+      <div className="p-8 flex flex-col items-center text-center gap-2 text-slate-500">
+        <KeyRound className="w-9 h-9 text-slate-300" />
+        <p className="text-sm font-semibold">אוטומציה — שדרוג בתשלום</p>
+        <p className="text-xs">מענה אוטומטי וניתוב לנציגים כלולים במסלול BASIC ומעלה.</p>
+      </div>
+    );
+  }
+
+  const patch = (k: keyof AutoRepliesConfig, v: object) => setCfg((c) => ({ ...c, [k]: { ...c[k], ...v } }));
+
+  return (
+    <div className="p-5 space-y-5">
+      {/* Round-robin */}
+      <section className="space-y-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-sm font-bold text-slate-800">ניתוב אוטומטי לנציגים</h3>
+            <p className="text-xs text-slate-500 mt-0.5">שיחות חדשות יחולקו בסבב בין הנציגים הפעילים.</p>
+          </div>
+          <ToggleBtn on={roundRobin} onClick={() => setRoundRobin((v) => !v)} />
+        </div>
+      </section>
+
+      <div className="h-px bg-surface-border" />
+
+      {/* Greeting */}
+      <AutoBlock
+        title="הודעת פתיחה" hint="נשלחת אוטומטית בפנייה ראשונה של לקוח חדש."
+        on={!!cfg.greeting?.enabled} onToggle={() => patch('greeting', { enabled: !cfg.greeting?.enabled })}
+        text={cfg.greeting?.text ?? ''} onText={(t) => patch('greeting', { text: t })}
+      />
+
+      {/* Off-hours */}
+      <AutoBlock
+        title="מחוץ לשעות פעילות" hint="נשלחת כשמגיעה הודעה מחוץ לימים/שעות שהוגדרו."
+        on={!!cfg.offHours?.enabled} onToggle={() => patch('offHours', { enabled: !cfg.offHours?.enabled })}
+        text={cfg.offHours?.text ?? ''} onText={(t) => patch('offHours', { text: t })}
+      >
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {WEEK_DAYS.map((d) => {
+            const active = cfg.offHours?.days?.includes(d.i);
+            return (
+              <button key={d.i} type="button"
+                onClick={() => {
+                  const days = new Set(cfg.offHours?.days ?? []);
+                  active ? days.delete(d.i) : days.add(d.i);
+                  patch('offHours', { days: [...days].sort() });
+                }}
+                className={cn('w-7 h-7 rounded-lg text-xs font-semibold transition',
+                  active ? 'bg-brand-600 text-white' : 'bg-surface-subtle text-slate-500 hover:bg-slate-200')}>
+                {d.label}
+              </button>
+            );
+          })}
+        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-600">
+          <span>משעה</span>
+          <input type="time" value={cfg.offHours?.from ?? '09:00'} onChange={(e) => patch('offHours', { from: e.target.value })}
+            className="px-2 py-1 rounded-lg border border-surface-border bg-surface-muted" dir="ltr" />
+          <span>עד</span>
+          <input type="time" value={cfg.offHours?.to ?? '18:00'} onChange={(e) => patch('offHours', { to: e.target.value })}
+            className="px-2 py-1 rounded-lg border border-surface-border bg-surface-muted" dir="ltr" />
+        </div>
+      </AutoBlock>
+
+      {/* Away */}
+      <AutoBlock
+        title="הודעת המתנה" hint="נשלחת אם אף נציג לא הגיב תוך מספר הדקות שהוגדר."
+        on={!!cfg.away?.enabled} onToggle={() => patch('away', { enabled: !cfg.away?.enabled })}
+        text={cfg.away?.text ?? ''} onText={(t) => patch('away', { text: t })}
+      >
+        <div className="flex items-center gap-2 text-xs text-slate-600">
+          <span>השהיה:</span>
+          <input type="number" min={1} max={180} value={cfg.away?.delayMin ?? 5}
+            onChange={(e) => patch('away', { delayMin: Math.max(1, Number(e.target.value) || 1) })}
+            className="w-16 px-2 py-1 rounded-lg border border-surface-border bg-surface-muted" dir="ltr" />
+          <span>דקות</span>
+        </div>
+      </AutoBlock>
+
+      {msg && (
+        <p className={cn('text-xs font-medium', msg.ok ? 'text-green-600' : 'text-red-500')}>{msg.text}</p>
+      )}
+      <button onClick={save} disabled={saving}
+        className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white text-sm font-semibold py-2.5 rounded-xl transition">
+        {saving ? 'שומר…' : 'שמור הגדרות'}
+      </button>
+    </div>
+  );
+}
+
+function ToggleBtn({ on, onClick }: { on: boolean; onClick: () => void }) {
+  return (
+    <button type="button" onClick={onClick} className="flex-shrink-0" aria-pressed={on}>
+      {on ? <ToggleRight className="w-9 h-9 text-brand-600" /> : <ToggleLeft className="w-9 h-9 text-slate-300" />}
+    </button>
+  );
+}
+
+function AutoBlock({ title, hint, on, onToggle, text, onText, children }: {
+  title: string; hint: string; on: boolean; onToggle: () => void;
+  text: string; onText: (t: string) => void; children?: React.ReactNode;
+}) {
+  return (
+    <section className="space-y-2">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-slate-800">{title}</h3>
+          <p className="text-xs text-slate-500 mt-0.5">{hint}</p>
+        </div>
+        <ToggleBtn on={on} onClick={onToggle} />
+      </div>
+      {on && (
+        <div className="space-y-2 pr-1">
+          <textarea value={text} onChange={(e) => onText(e.target.value)} rows={2}
+            placeholder="תוכן ההודעה…"
+            className="w-full px-3 py-2 text-sm rounded-lg border border-surface-border bg-surface-muted placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 transition resize-none" />
+          {children}
+        </div>
+      )}
+    </section>
   );
 }
 

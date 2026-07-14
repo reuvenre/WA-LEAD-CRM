@@ -19,6 +19,10 @@ export interface Entitlements {
     apifyLive: boolean;   // live Yad2 listings pull vs. the local estimator
     listings: boolean;    // the "דירות יד שניה" module (nav + screen). Off = a future paid upsell.
     apiAccess: boolean;
+    autoReplies: boolean; // greeting / off-hours / away auto-messages
+    roundRobin: boolean;  // auto-assign new leads across agents
+    scheduledMessages: boolean; // send-later
+    customAttributes: boolean;  // per-tenant custom lead fields
   };
 }
 
@@ -28,19 +32,31 @@ export const ENTITLEMENTS: Record<TenantPlan, Entitlements> = {
   TRIAL: {
     maxLines: 1, maxUsers: 2, maxLeads: 100, dailyMsgCapPerLine: 50,
     maxTemplates: 5, maxAutomations: 0,
-    features: { multiLine: false, automations: false, analytics: false, googleCalendar: false, apifyLive: false, listings: false, apiAccess: false },
+    features: {
+      multiLine: false, automations: false, analytics: false, googleCalendar: false,
+      apifyLive: false, listings: false, apiAccess: false,
+      autoReplies: false, roundRobin: false, scheduledMessages: false, customAttributes: false,
+    },
   },
   BASIC: {
     maxLines: 1, maxUsers: 3, maxLeads: 1_500, dailyMsgCapPerLine: 150,
     maxTemplates: 20, maxAutomations: 2,
-    features: { multiLine: false, automations: true, analytics: true, googleCalendar: true, apifyLive: false, listings: false, apiAccess: false },
+    features: {
+      multiLine: false, automations: true, analytics: true, googleCalendar: true,
+      apifyLive: false, listings: false, apiAccess: false,
+      autoReplies: true, roundRobin: true, scheduledMessages: true, customAttributes: true,
+    },
   },
   PRO: {
     maxLines: 5, maxUsers: 15, maxLeads: 25_000, dailyMsgCapPerLine: 300,
     maxTemplates: INF, maxAutomations: INF,
     // `listings` is intentionally OFF for now — the second-hand module ships hidden as a
     // future paid upgrade. Flip this to `true` when it's ready to sell.
-    features: { multiLine: true, automations: true, analytics: true, googleCalendar: true, apifyLive: true, listings: false, apiAccess: true },
+    features: {
+      multiLine: true, automations: true, analytics: true, googleCalendar: true,
+      apifyLive: true, listings: false, apiAccess: true,
+      autoReplies: true, roundRobin: true, scheduledMessages: true, customAttributes: true,
+    },
   },
 };
 

@@ -4,6 +4,9 @@ import { prisma } from '../lib/prisma';
 import { SOCKET_EVENTS, emitScoped } from '../socket';
 import { Server as SocketIOServer } from 'socket.io';
 import { logActivity } from '../lib/activity';
+import { pickRoundRobinAssignee } from '../lib/assignment';
+import { handleInboundAutoReply } from '../lib/autoReply';
+import { triggerAutomations } from '../lib/automations';
 
 export const webhookRouter = Router();
 
@@ -106,15 +109,22 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
   // Upsert lead atomically — two messages from a brand-new number arriving together
   // would otherwise both miss on findFirst and collide on the (tenantId, phone) unique.
   const existingLead = await prisma.lead.findFirst({ where: { tenantId, phone } });
+
+  // Round-robin: a brand-new inbound lead gets auto-assigned to the next agent (if the
+  // tenant enabled it). Computed before create so the lead surfaces in that agent's list
+  // immediately. Only for genuinely-inbound new conversations.
+  const autoAssignee = (!existingLead && isIncoming) ? await pickRoundRobinAssignee(tenantId) : null;
+
   const lead = await prisma.lead.upsert({
     where: { tenantId_phone: { tenantId, phone } },
     // Stamp the line this conversation arrived on (backfill legacy leads that lack one).
     update: { lastMessageAt: new Date(), ...(lineId ? { lineId } : {}) },
-    create: { tenantId, phone, name: contactName, lastMessageAt: new Date(), lineId },
+    create: { tenantId, phone, name: contactName, lastMessageAt: new Date(), lineId, ...(autoAssignee ? { assignedTo: autoAssignee } : {}) },
   });
 
   if (!existingLead) {
     await logActivity(lead.id, tenantId, 'ליד נוצר', isIncoming ? 'נוצר מהודעת וואצאפ נכנסת' : 'נוצר מהודעת וואצאפ יוצאת (מהטלפון)');
+    if (autoAssignee) await logActivity(lead.id, tenantId, 'שיוך נציג', `הוקצה אוטומטית ל-${autoAssignee}`);
   }
 
   const message = await prisma.message.create({
@@ -139,6 +149,14 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
   if (!existingLead) emitScoped(io, tenantId, lead.assignedTo, SOCKET_EVENTS.LEAD_CREATED, lead);
 
   console.log(`${isIncoming ? '📩' : '📤'} [${tenantName}] ${phone}: ${content.substring(0, 50)}`);
+
+  // Post-ingest hooks (inbound only). Fire-and-forget so a slow/failed hook never
+  // delays the webhook 200 (Green API retries on non-2xx).
+  if (isIncoming) {
+    void handleInboundAutoReply({ tenantId, lead, isNewLead: !existingLead });
+    // The 'lead.message_received' automation event was declared but never fired until now.
+    void triggerAutomations('lead.message_received', { lead, message }, tenantId);
+  }
 
   return res.status(200).json({ received: true });
 }

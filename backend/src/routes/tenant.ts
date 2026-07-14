@@ -35,6 +35,7 @@ tenantRouter.get('/settings', async (req: Request, res: Response) => {
     select: {
       id: true, name: true, email: true, plan: true, active: true,
       greenApiInstanceId: true, greenApiToken: true, greenApiWebhookUrl: true,
+      assignmentMode: true, autoReplies: true,
       createdAt: true,
     },
   });
@@ -46,6 +47,39 @@ tenantRouter.get('/settings', async (req: Request, res: Response) => {
     // Strip any embedded ?token= secret before echoing the webhook URL back.
     greenApiWebhookUrl: greenApiWebhookUrl ? greenApiWebhookUrl.split('?')[0] : null,
   });
+});
+
+// PATCH /api/tenant/engagement — round-robin assignment + auto-reply config (manager).
+// Gated by plan features (autoReplies / roundRobin) so downgraded tenants can't enable.
+tenantRouter.patch('/engagement', async (req: Request, res: Response) => {
+  if (!requireTenantManager(req, res)) return;
+  const feats = entitlementsFor((await prisma.tenant.findUnique({
+    where: { id: req.user!.tenantId }, select: { plan: true },
+  }))?.plan ?? 'TRIAL').features;
+
+  const { assignmentMode, autoReplies } = req.body as { assignmentMode?: string; autoReplies?: unknown };
+  const data: Record<string, unknown> = {};
+
+  if (assignmentMode !== undefined) {
+    const mode = assignmentMode === 'round_robin' ? 'round_robin' : 'manual';
+    if (mode === 'round_robin' && !feats.roundRobin) {
+      return res.status(403).json({ error: 'ניתוב אוטומטי אינו כלול במסלול הנוכחי — נדרש שדרוג', upgrade: true });
+    }
+    data.assignmentMode = mode;
+  }
+
+  if (autoReplies !== undefined) {
+    if (!feats.autoReplies) {
+      return res.status(403).json({ error: 'מענה אוטומטי אינו כלול במסלול הנוכחי — נדרש שדרוג', upgrade: true });
+    }
+    // Store as-is (JSON); the shape is validated/normalized when consumed in lib/autoReply.ts.
+    data.autoReplies = autoReplies === null ? undefined : (autoReplies as object);
+  }
+
+  if (Object.keys(data).length === 0) return res.status(400).json({ error: 'אין שינויים' });
+
+  await prisma.tenant.update({ where: { id: req.user!.tenantId }, data });
+  return res.json({ success: true });
 });
 
 // GET /api/tenant/entitlements — the resolved plan limits + features + current usage,

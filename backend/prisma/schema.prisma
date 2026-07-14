@@ -84,6 +84,11 @@ model Tenant {
   // Shared secret embedded in the webhook URL (?token=…). When set, inbound
   // webhooks must present it — blocks payload forgery by anyone who knows the instanceId.
   webhookSecret      String?
+  // Lead auto-assignment: 'manual' (default) or 'round_robin' across active agents.
+  assignmentMode     String  @default("manual")
+  assignmentPointer  Int     @default(0)
+  // Auto-reply config: { greeting, offHours, away } — see lib/autoReply.ts.
+  autoReplies        Json?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -176,6 +181,8 @@ model Lead {
   tags          String[]   @default([])
   meetingDate   DateTime?
   meetingNotes  String?
+  // Last time an automated reply was sent to this lead (auto-reply anti-loop throttle).
+  lastAutoReplyAt DateTime?
   // Google Calendar event mirror (one-way sync)
   googleEventId       String?
   googleCalendarUserId String?

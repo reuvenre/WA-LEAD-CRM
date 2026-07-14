@@ -1,6 +1,14 @@
 import { Server as SocketIOServer, Socket } from 'socket.io';
 
+// Module-level reference to the live Socket.io server, so code running OUTSIDE an
+// Express request (job handlers, schedulers) can emit realtime events. Set once at
+// startup by server.ts. Route handlers keep using `req.app.get('io')` as before.
+let ioRef: SocketIOServer | null = null;
+export function setIo(io: SocketIOServer) { ioRef = io; }
+export function getIo(): SocketIOServer | null { return ioRef; }
+
 export function initSocket(io: SocketIOServer) {
+  setIo(io);
   io.on('connection', (socket: Socket) => {
     console.log(`🔌 Client connected: ${socket.id}`);
 

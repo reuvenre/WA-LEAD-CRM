@@ -16,6 +16,13 @@ export interface ListingRow {
 }
 export interface REClientRow { id: string; name: string; phone: string | null; city: string | null; rooms: number; budgetMax: number; deliveryBy: string | null; linkedToWhatsapp?: boolean }
 
+// Auto-reply configuration (greeting / off-hours / away), stored as JSON on the tenant.
+export interface AutoRepliesConfig {
+  greeting?: { enabled: boolean; text: string };
+  offHours?: { enabled: boolean; text: string; days: number[]; from: string; to: string; tz?: string };
+  away?: { enabled: boolean; text: string; delayMin: number };
+}
+
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
 function getToken(): string {
@@ -182,7 +189,10 @@ export const api = {
       id: string; name: string; email: string; plan: string;
       greenApiInstanceId: string | null; greenApiTokenSet: boolean;
       greenApiWebhookUrl: string | null;
+      assignmentMode: string; autoReplies: AutoRepliesConfig | null;
     }>('/api/tenant/settings'),
+    updateEngagement: (data: { assignmentMode?: string; autoReplies?: AutoRepliesConfig | null }) =>
+      request<{ success: boolean }>('/api/tenant/engagement', { method: 'PATCH', body: JSON.stringify(data) }),
     entitlements: () => request<{
       plan: string;
       entitlements: { features: Record<string, boolean> } & Record<string, unknown>;
