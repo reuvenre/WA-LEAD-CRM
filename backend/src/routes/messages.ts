@@ -48,6 +48,18 @@ messagesRouter.post('/send', async (req: Request, res: Response) => {
     const lead = await prisma.lead.findFirst({ where: { id: leadId, tenantId }, include: { line: true } });
     if (!lead || !canAccessLead(req, lead.assignedTo)) return res.status(404).json({ error: 'Lead not found' });
 
+    // WEBCHAT has no external gateway — persist the reply and let the visitor's widget
+    // pick it up by polling. No provider call, no daily anti-ban cap.
+    if (lead.channel === 'WEBCHAT') {
+      const message = await prisma.message.create({
+        data: { tenantId, leadId, content, type: 'text', direction: 'outbound', status: 'sent' },
+      });
+      await prisma.lead.update({ where: { id: leadId }, data: { lastMessageAt: new Date() } });
+      const io: SocketIOServer = req.app.get('io');
+      emitScoped(io, tenantId, lead.assignedTo, SOCKET_EVENTS.NEW_MESSAGE, message);
+      return res.json({ message, result: { success: true } });
+    }
+
     // Providers need a digits-only number (chatId = <phone>@c.us). Reject invalid
     // phones here so the user gets a clear message instead of an opaque provider error.
     const phone = (lead.phone ?? '').replace(/\D/g, '');
@@ -107,6 +119,11 @@ messagesRouter.post('/send-file', async (req: Request, res: Response) => {
 
     const lead = await prisma.lead.findFirst({ where: { id: leadId, tenantId }, include: { line: true } });
     if (!lead || !canAccessLead(req, lead.assignedTo)) return res.status(404).json({ error: 'Lead not found' });
+
+    // File attachments only make sense over WhatsApp in v1 (webchat has no upload path yet).
+    if (lead.channel !== 'WHATSAPP') {
+      return res.status(400).json({ error: 'שליחת קבצים נתמכת רק בערוץ וואטסאפ' });
+    }
 
     const phone = (lead.phone ?? '').replace(/\D/g, '');
     if (!phone) {

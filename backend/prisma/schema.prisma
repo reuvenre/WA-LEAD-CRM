@@ -93,6 +93,10 @@ model Tenant {
   slaTargetMinutes   Int     @default(30)
   // Custom lead field definitions: [{key,label,type:'text'|'number'|'select',options?}].
   attributeDefs      Json?
+  // Website chat widget: public key + on/off + appearance config { title, greeting, color }.
+  widgetKey          String? @unique
+  widgetEnabled      Boolean @default(false)
+  widgetConfig       Json?
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 

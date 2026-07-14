@@ -23,6 +23,7 @@ export interface Entitlements {
     roundRobin: boolean;  // auto-assign new leads across agents
     scheduledMessages: boolean; // send-later
     customAttributes: boolean;  // per-tenant custom lead fields
+    webchat: boolean;     // embeddable website chat widget
   };
 }
 
@@ -36,6 +37,7 @@ export const ENTITLEMENTS: Record<TenantPlan, Entitlements> = {
       multiLine: false, automations: false, analytics: false, googleCalendar: false,
       apifyLive: false, listings: false, apiAccess: false,
       autoReplies: false, roundRobin: false, scheduledMessages: false, customAttributes: false,
+      webchat: false,
     },
   },
   BASIC: {
@@ -45,6 +47,7 @@ export const ENTITLEMENTS: Record<TenantPlan, Entitlements> = {
       multiLine: false, automations: true, analytics: true, googleCalendar: true,
       apifyLive: false, listings: false, apiAccess: false,
       autoReplies: true, roundRobin: true, scheduledMessages: true, customAttributes: true,
+      webchat: true,
     },
   },
   PRO: {
@@ -56,6 +59,7 @@ export const ENTITLEMENTS: Record<TenantPlan, Entitlements> = {
       multiLine: true, automations: true, analytics: true, googleCalendar: true,
       apifyLive: true, listings: false, apiAccess: true,
       autoReplies: true, roundRobin: true, scheduledMessages: true, customAttributes: true,
+      webchat: true,
     },
   },
 };

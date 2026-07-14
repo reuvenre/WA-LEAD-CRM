@@ -18,9 +18,9 @@ import {
   X,
 } from 'lucide-react';
 import { TemplateSelector } from './TemplateSelector';
-import { cn, STATUS_CONFIG, formatFullTime, ALL_STATUSES } from '@/lib/utils';
+import { cn, STATUS_CONFIG, CHANNEL_CONFIG, formatFullTime, ALL_STATUSES } from '@/lib/utils';
 import { api, type ScheduledMessage } from '@/lib/api';
-import type { Lead, Message, LeadStatus } from '@/types';
+import type { Lead, Message, LeadStatus, LeadChannel } from '@/types';
 
 interface ChatAreaProps {
   lead: Lead;
@@ -139,6 +139,8 @@ export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpda
   };
 
   const statusCfg = STATUS_CONFIG[lead.status as LeadStatus];
+  // File attachments + WhatsApp-history import only apply to the WhatsApp channel.
+  const isWhatsapp = !lead.channel || lead.channel === 'WHATSAPP';
 
   return (
     <div className="flex flex-col h-full">
@@ -156,7 +158,15 @@ export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpda
             {lead.name.charAt(0)}
           </div>
           <div>
-            <h2 className="font-bold text-slate-800 text-base leading-tight">{lead.name}</h2>
+            <h2 className="font-bold text-slate-800 text-base leading-tight flex items-center gap-2">
+              {lead.name}
+              {lead.channel && lead.channel !== 'WHATSAPP' && (
+                <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-full',
+                  CHANNEL_CONFIG[lead.channel as LeadChannel].bg, CHANNEL_CONFIG[lead.channel as LeadChannel].color)}>
+                  {CHANNEL_CONFIG[lead.channel as LeadChannel].label}
+                </span>
+              )}
+            </h2>
             <div className="flex items-center gap-1.5 mt-0.5">
               <Phone className="w-3 h-3 text-slate-400" />
               <span className="text-xs text-slate-500 font-mono" dir="ltr">
@@ -168,7 +178,7 @@ export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpda
 
         {/* Actions */}
         <div className="flex items-center gap-2">
-          {onLoadHistory && (
+          {onLoadHistory && isWhatsapp && (
             <button
               onClick={handleLoadHistory}
               disabled={loadingHistory}
@@ -269,27 +279,31 @@ export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpda
             )}
           </div>
 
-          {/* Attach file (image / document) button */}
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
-            className="hidden"
-            onChange={handleFilePick}
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={uploading}
-            className={cn(
-              'w-9 h-9 flex items-center justify-center rounded-lg border border-surface-border transition flex-shrink-0',
-              uploading
-                ? 'text-slate-300 cursor-wait'
-                : 'text-slate-500 hover:bg-surface-subtle'
-            )}
-            title="צירוף תמונה או מסמך"
-          >
-            {uploading ? <Clock className="w-4 h-4 animate-pulse" /> : <Paperclip className="w-4 h-4" />}
-          </button>
+          {/* Attach file (image / document) button — WhatsApp only in v1 */}
+          {isWhatsapp && (
+            <>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip"
+                className="hidden"
+                onChange={handleFilePick}
+              />
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                disabled={uploading}
+                className={cn(
+                  'w-9 h-9 flex items-center justify-center rounded-lg border border-surface-border transition flex-shrink-0',
+                  uploading
+                    ? 'text-slate-300 cursor-wait'
+                    : 'text-slate-500 hover:bg-surface-subtle'
+                )}
+                title="צירוף תמונה או מסמך"
+              >
+                {uploading ? <Clock className="w-4 h-4 animate-pulse" /> : <Paperclip className="w-4 h-4" />}
+              </button>
+            </>
+          )}
 
           {/* Schedule (send later) button */}
           {schedulingEnabled && (

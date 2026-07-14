@@ -17,6 +17,8 @@ import { superAdminRouter } from './routes/superAdmin';
 import { tenantRouter } from './routes/tenant';
 import { googleRouter } from './routes/google';
 import { waImportRouter } from './routes/waImport';
+import { widgetRouter } from './routes/widget';
+import { WIDGET_JS } from './lib/widgetScript';
 import { startJobRunner, stopJobRunner } from './lib/jobs';
 import { requireAuth } from './middleware/auth';
 import { requireFeature } from './lib/entitlements';
@@ -63,6 +65,19 @@ const io = new SocketIOServer(httpServer, {
 });
 
 app.set('io', io);
+
+// ─── Public website chat widget (BEFORE the restrictive global CORS) ──────────
+// Customer sites live on arbitrary origins the CRM allowlist rejects, so the widget
+// gets its own permissive CORS + body parser and is registered first so the global
+// cors() below never runs for it. The widget.js script itself loads cross-origin
+// freely (script src) and is served from the compiled bundle.
+app.get('/widget.js', (_req, res) => {
+  res.set('Content-Type', 'application/javascript; charset=utf-8');
+  res.set('Cache-Control', 'public, max-age=300');
+  res.set('Access-Control-Allow-Origin', '*');
+  res.send(WIDGET_JS);
+});
+app.use('/api/widget', cors({ origin: true }), express.json({ limit: '256kb' }), widgetRouter);
 
 app.use(cors({
   origin: corsOrigin,

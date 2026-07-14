@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, ShieldCheck, Lock, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Check, UserCircle, Building2, Mail, Users, Plus, ToggleLeft, ToggleRight, CalendarDays, Trash2, MessageSquareText, Bot, KeyRound } from 'lucide-react';
+import { X, ShieldCheck, Lock, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Check, UserCircle, Building2, Mail, Users, Plus, ToggleLeft, ToggleRight, CalendarDays, Trash2, MessageSquareText, Bot, KeyRound, Globe, Copy } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api, type AutoRepliesConfig } from '@/lib/api';
 import { useConfirm } from './useConfirm';
@@ -25,7 +25,7 @@ async function authFetch(path: string, body?: object, method?: string) {
 
 interface SettingsModalProps { onClose: () => void; }
 
-type Tab = 'profile' | 'agents' | 'templates' | '2fa' | 'password' | 'green-api' | 'google' | 'engagement';
+type Tab = 'profile' | 'agents' | 'templates' | '2fa' | 'password' | 'green-api' | 'google' | 'engagement' | 'widget';
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
   const [tab, setTab] = useState<Tab>('profile');
@@ -49,6 +49,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           {isManager && <TabBtn active={tab === 'agents'} onClick={() => setTab('agents')} icon={<Users className="w-3.5 h-3.5" />} label="נציגים" />}
           {isManager && <TabBtn active={tab === 'templates'} onClick={() => setTab('templates')} icon={<MessageSquareText className="w-3.5 h-3.5" />} label="תבניות" />}
           {isManager && <TabBtn active={tab === 'engagement'} onClick={() => setTab('engagement')} icon={<Bot className="w-3.5 h-3.5" />} label="אוטומציה" />}
+          {isManager && <TabBtn active={tab === 'widget'} onClick={() => setTab('widget')} icon={<Globe className="w-3.5 h-3.5" />} label="צ׳אט לאתר" />}
           {isManager && <TabBtn active={tab === 'green-api'} onClick={() => setTab('green-api')} icon={<Wifi className="w-3.5 h-3.5" />} label="Green API" />}
           <TabBtn active={tab === 'google'} onClick={() => setTab('google')} icon={<CalendarDays className="w-3.5 h-3.5" />} label="יומן" />
           <TabBtn active={tab === '2fa'} onClick={() => setTab('2fa')} icon={<ShieldCheck className="w-3.5 h-3.5" />} label="2FA" />
@@ -60,12 +61,121 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           {tab === 'agents' && <AgentsManagement />}
           {tab === 'templates' && <TemplatesManager />}
           {tab === 'engagement' && <EngagementSettings />}
+          {tab === 'widget' && <WidgetSettings />}
           {tab === 'green-api' && <GreenApiSettings />}
           {tab === 'google' && <GoogleCalendarSettings />}
           {tab === '2fa' && <TwoFactorSetup />}
           {tab === 'password' && <ChangePassword onDone={onClose} />}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── Website chat widget ──────────────────────────────────────────────────────
+function WidgetSettings() {
+  const [loading, setLoading] = useState(true);
+  const [available, setAvailable] = useState(true);
+  const [enabled, setEnabled] = useState(false);
+  const [title, setTitle] = useState('צ׳אט עם נציג');
+  const [greeting, setGreeting] = useState('שלום! איך נוכל לעזור? 🙂');
+  const [color, setColor] = useState('#25D366');
+  const [snippet, setSnippet] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    api.tenant.widget.get().then((w) => {
+      setAvailable(w.available);
+      setEnabled(w.enabled);
+      setSnippet(w.snippet);
+      if (w.config) {
+        if (w.config.title) setTitle(w.config.title);
+        if (w.config.greeting) setGreeting(w.config.greeting);
+        if (w.config.color) setColor(w.config.color);
+      }
+    }).catch(() => setMsg({ ok: false, text: 'טעינת ההגדרות נכשלה' })).finally(() => setLoading(false));
+  }, []);
+
+  const save = async () => {
+    setSaving(true); setMsg(null);
+    try {
+      await api.tenant.widget.update({ enabled, config: { title, greeting, color } });
+      const w = await api.tenant.widget.get(); // refresh to get a freshly-minted snippet
+      setSnippet(w.snippet);
+      setMsg({ ok: true, text: 'ההגדרות נשמרו ✓' });
+    } catch (err) {
+      setMsg({ ok: false, text: err instanceof Error ? err.message : 'השמירה נכשלה' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const copySnippet = () => {
+    if (!snippet) return;
+    navigator.clipboard.writeText(snippet).then(() => { setCopied(true); setTimeout(() => setCopied(false), 1800); });
+  };
+
+  if (loading) return <div className="p-8 text-center text-sm text-slate-400">טוען…</div>;
+  if (!available) {
+    return (
+      <div className="p-8 flex flex-col items-center text-center gap-2 text-slate-500">
+        <KeyRound className="w-9 h-9 text-slate-300" />
+        <p className="text-sm font-semibold">צ׳אט לאתר — שדרוג בתשלום</p>
+        <p className="text-xs">ווידג׳ט הצ׳אט כלול במסלול BASIC ומעלה.</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-5 space-y-4">
+      <section className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-slate-800">ווידג׳ט צ׳אט באתר</h3>
+          <p className="text-xs text-slate-500 mt-0.5">מבקרים באתר שלך יכתבו — והשיחה תיכנס לכאן כליד.</p>
+        </div>
+        <ToggleBtn on={enabled} onClick={() => setEnabled((v) => !v)} />
+      </section>
+
+      <div className="space-y-2">
+        <div className="space-y-1">
+          <label className="text-[11px] text-slate-400">כותרת</label>
+          <input value={title} onChange={(e) => setTitle(e.target.value)}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-surface-border bg-surface-muted focus:outline-none focus:ring-2 focus:ring-brand-500" />
+        </div>
+        <div className="space-y-1">
+          <label className="text-[11px] text-slate-400">הודעת פתיחה</label>
+          <textarea value={greeting} onChange={(e) => setGreeting(e.target.value)} rows={2}
+            className="w-full px-3 py-2 text-sm rounded-lg border border-surface-border bg-surface-muted focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none" />
+        </div>
+        <div className="flex items-center gap-2">
+          <label className="text-[11px] text-slate-400">צבע</label>
+          <input type="color" value={color} onChange={(e) => setColor(e.target.value)}
+            className="w-9 h-8 rounded border border-surface-border bg-white cursor-pointer" />
+          <span className="text-xs font-mono text-slate-500" dir="ltr">{color}</span>
+        </div>
+      </div>
+
+      {msg && <p className={cn('text-xs font-medium', msg.ok ? 'text-green-600' : 'text-red-500')}>{msg.text}</p>}
+      <button onClick={save} disabled={saving}
+        className="w-full bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white text-sm font-semibold py-2.5 rounded-xl transition">
+        {saving ? 'שומר…' : 'שמור הגדרות'}
+      </button>
+
+      {enabled && snippet && (
+        <div className="space-y-1.5 pt-1">
+          <label className="text-[11px] text-slate-400">הדבק קוד זה באתר שלך (לפני &lt;/body&gt;):</label>
+          <div className="relative">
+            <textarea readOnly value={snippet} rows={2} dir="ltr"
+              className="w-full px-3 py-2 text-[11px] font-mono rounded-lg border border-surface-border bg-slate-50 resize-none" />
+            <button onClick={copySnippet}
+              className="absolute top-2 left-2 flex items-center gap-1 text-[11px] font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded px-2 py-1">
+              {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}{copied ? 'הועתק' : 'העתק'}
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

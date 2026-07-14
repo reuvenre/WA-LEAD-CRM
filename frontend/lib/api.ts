@@ -223,6 +223,14 @@ export const api = {
       request<void>(`/api/tenant/users/${id}`, { method: 'DELETE' }),
     updateProfile: (data: { name: string; email: string }) =>
       request('/api/tenant/profile', { method: 'PATCH', body: JSON.stringify(data) }),
+    widget: {
+      get: () => request<{
+        available: boolean; enabled: boolean; hasKey: boolean;
+        config: { title?: string; greeting?: string; color?: string } | null; snippet: string | null;
+      }>('/api/tenant/widget'),
+      update: (data: { enabled?: boolean; config?: { title?: string; greeting?: string; color?: string } }) =>
+        request<{ success: boolean }>('/api/tenant/widget', { method: 'PATCH', body: JSON.stringify(data) }),
+    },
   },
 
   google: {

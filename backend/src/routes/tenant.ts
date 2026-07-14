@@ -241,6 +241,54 @@ tenantRouter.post('/green-api/test', async (req: Request, res: Response) => {
   }
 });
 
+// GET /api/tenant/widget — website-chat-widget config + embed snippet (manager).
+tenantRouter.get('/widget', async (req: Request, res: Response) => {
+  if (!requireTenantManager(req, res)) return;
+  const tenantId = req.user!.tenantId;
+  const feats = entitlementsFor((await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } }))?.plan ?? 'TRIAL').features;
+  const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { widgetKey: true, widgetEnabled: true, widgetConfig: true } });
+  const apiBase = (process.env.PUBLIC_API_URL || `${req.protocol}://${req.get('host')}`).replace(/\/+$/, '');
+  const snippet = t?.widgetKey
+    ? `<script src="${apiBase}/widget.js" data-key="${t.widgetKey}" async></script>`
+    : null;
+  return res.json({
+    available: feats.webchat,
+    enabled: t?.widgetEnabled ?? false,
+    hasKey: Boolean(t?.widgetKey),
+    config: t?.widgetConfig ?? null,
+    snippet,
+  });
+});
+
+// PATCH /api/tenant/widget — enable/configure the widget; mints a key on first enable.
+tenantRouter.patch('/widget', async (req: Request, res: Response) => {
+  if (!requireTenantManager(req, res)) return;
+  const tenantId = req.user!.tenantId;
+  const feats = entitlementsFor((await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } }))?.plan ?? 'TRIAL').features;
+  if (!feats.webchat) return res.status(403).json({ error: 'צ׳אט לאתר אינו כלול במסלול הנוכחי — נדרש שדרוג', upgrade: true });
+
+  const { enabled, config } = req.body as { enabled?: boolean; config?: { title?: string; greeting?: string; color?: string } };
+  const current = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { widgetKey: true } });
+  const data: Record<string, unknown> = {};
+
+  if (enabled !== undefined) {
+    data.widgetEnabled = Boolean(enabled);
+    // Mint a public key the first time the widget is switched on.
+    if (enabled && !current?.widgetKey) data.widgetKey = 'wk_' + crypto.randomBytes(16).toString('hex');
+  }
+  if (config !== undefined) {
+    data.widgetConfig = {
+      title: String(config?.title ?? '').slice(0, 60) || 'צ׳אט עם נציג',
+      greeting: String(config?.greeting ?? '').slice(0, 300),
+      color: /^#[0-9a-fA-F]{6}$/.test(config?.color ?? '') ? config!.color : '#25D366',
+    };
+  }
+  if (Object.keys(data).length === 0) return res.status(400).json({ error: 'אין שינויים' });
+
+  await prisma.tenant.update({ where: { id: tenantId }, data });
+  return res.json({ success: true });
+});
+
 // GET /api/tenant/users — list users in this tenant
 tenantRouter.get('/users', async (req: Request, res: Response) => {
   const users = await prisma.user.findMany({

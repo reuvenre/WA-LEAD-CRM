@@ -2,8 +2,8 @@
 
 import { useState } from 'react';
 import { Search, Users, ChevronDown, Plus, DownloadCloud, Loader2, CheckSquare, Trash2, X } from 'lucide-react';
-import { cn, STATUS_CONFIG, formatTime, ALL_STATUSES } from '@/lib/utils';
-import type { Lead, LeadStatus } from '@/types';
+import { cn, STATUS_CONFIG, CHANNEL_CONFIG, formatTime, ALL_STATUSES } from '@/lib/utils';
+import type { Lead, LeadStatus, LeadChannel } from '@/types';
 
 interface LeadListProps {
   leads: Lead[];
@@ -225,7 +225,15 @@ function LeadItem({
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center justify-between gap-2">
-          <span className="font-semibold text-sm text-slate-800 truncate">{lead.name}</span>
+          <span className="font-semibold text-sm text-slate-800 truncate flex items-center gap-1.5">
+            {lead.name}
+            {lead.channel && lead.channel !== 'WHATSAPP' && (
+              <span className={cn('text-[9px] font-semibold px-1.5 py-0.5 rounded-full flex-shrink-0',
+                CHANNEL_CONFIG[lead.channel as LeadChannel].bg, CHANNEL_CONFIG[lead.channel as LeadChannel].color)}>
+                {CHANNEL_CONFIG[lead.channel as LeadChannel].label}
+              </span>
+            )}
+          </span>
           <span className="text-[11px] text-slate-400 flex-shrink-0">
             {formatTime(lead.lastMessageAt)}
           </span>
