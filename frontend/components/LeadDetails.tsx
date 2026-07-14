@@ -5,7 +5,7 @@ import {
   User, Phone, Calendar, StickyNote, TrendingUp, UserCheck, Save, Tag, History, FolderKanban, Mail, Building2, Clock, Trash2,
 } from 'lucide-react';
 import { cn, STATUS_CONFIG, PRIORITY_CONFIG, ALL_PRIORITIES, formatTime, toDatetimeLocal, fromDatetimeLocal } from '@/lib/utils';
-import type { Lead, Priority, LeadStatus, Project } from '@/types';
+import type { Lead, Priority, LeadStatus, Project, AttributeDef } from '@/types';
 import { TagsInput } from './TagsInput';
 import { ActivityLog } from './ActivityLog';
 import { api } from '@/lib/api';
@@ -34,6 +34,8 @@ export function LeadDetails({ lead, onUpdate, onDelete }: LeadDetailsProps) {
   const [deleting, setDeleting] = useState(false);
   const [projects, setProjects] = useState<Project[]>([]);
   const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; username: string; role: string; active: boolean }>>([]);
+  const [attrDefs, setAttrDefs] = useState<AttributeDef[]>([]);
+  const [attributes, setAttributes] = useState<Record<string, string | number>>({});
 
   useEffect(() => {
     setName(lead.name ?? '');
@@ -44,6 +46,7 @@ export function LeadDetails({ lead, onUpdate, onDelete }: LeadDetailsProps) {
     setTags(lead.tags ?? []);
     setMeetingDate(toDatetimeLocal(lead.meetingDate));
     setMeetingNotes(lead.meetingNotes ?? '');
+    setAttributes((lead.attributes as Record<string, string | number>) ?? {});
     setDirty(false);
     setConfirmDelete(false);
     // Reset ONLY when a different lead is selected. Depending on the mutable fields
@@ -56,6 +59,7 @@ export function LeadDetails({ lead, onUpdate, onDelete }: LeadDetailsProps) {
   useEffect(() => {
     api.projects.list().then(setProjects).catch(() => {});
     api.tenant.listUsers().then(setTenantUsers).catch(() => {});
+    api.tenant.settings().then((s) => setAttrDefs(s.attributeDefs ?? [])).catch(() => {});
   }, []);
 
   const handleSave = async () => {
@@ -70,6 +74,7 @@ export function LeadDetails({ lead, onUpdate, onDelete }: LeadDetailsProps) {
         tags,
         meetingDate: fromDatetimeLocal(meetingDate),
         meetingNotes: meetingNotes || null,
+        ...(attrDefs.length > 0 ? { attributes } : {}),
       } as Partial<Lead>);
       setDirty(false);
     } finally {
@@ -137,6 +142,36 @@ export function LeadDetails({ lead, onUpdate, onDelete }: LeadDetailsProps) {
               </div>
             </div>
           </div>
+
+          {/* Custom attributes (tenant-defined) */}
+          {attrDefs.length > 0 && (
+            <div className="px-4 py-4 border-b border-surface-border">
+              <SectionHeader icon={<Tag className="w-3.5 h-3.5" />} label="שדות מותאמים" />
+              <div className="mt-2 space-y-2">
+                {attrDefs.map((def) => {
+                  const val = attributes[def.key] ?? '';
+                  const set = (v: string | number) => { setAttributes((a) => ({ ...a, [def.key]: v })); setDirty(true); };
+                  return (
+                    <div key={def.key} className="space-y-1">
+                      <label className="text-[11px] text-slate-400">{def.label}</label>
+                      {def.type === 'select' ? (
+                        <select value={String(val)} onChange={(e) => set(e.target.value)}
+                          className="w-full px-3 py-2 text-sm rounded-lg border border-surface-border bg-surface-muted focus:outline-none focus:ring-2 focus:ring-brand-500 transition">
+                          <option value="">—</option>
+                          {(def.options ?? []).map((o) => <option key={o} value={o}>{o}</option>)}
+                        </select>
+                      ) : (
+                        <input type={def.type === 'number' ? 'number' : 'text'} value={String(val)}
+                          onChange={(e) => set(def.type === 'number' ? e.target.value : e.target.value)}
+                          placeholder={def.label}
+                          className="w-full px-3 py-2 text-sm rounded-lg border border-surface-border bg-surface-muted placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 transition" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
           {/* Project */}
           <div className="px-4 py-3 border-b border-surface-border">

@@ -1,4 +1,4 @@
-import type { Lead, Message, Template, Project, LeadsResponse, AnalyticsOverview } from '@/types';
+import type { Lead, Message, Template, Project, LeadsResponse, AnalyticsOverview, AttributeDef } from '@/types';
 
 // ─── Real-estate DB row shapes (camelCase from the backend) ───────────────────
 export interface DealRow { id: string; projectName: string; blockParcel: string | null; city: string | null; status: string; gdv: number; expectedMargin: number; riskAlert: boolean }
@@ -86,7 +86,7 @@ export const api = {
       request<Lead>('/api/leads', { method: 'POST', body: JSON.stringify(data) }),
     import: (leads: Array<{ name: string; phone: string; status?: string; priority?: string; assignedTo?: string; tags?: string }>) =>
       request<{ created: number; skipped: number; errors: string[] }>('/api/leads/import', { method: 'POST', body: JSON.stringify({ leads }) }),
-    update: (id: string, data: Partial<Pick<Lead, 'status' | 'priority' | 'internalNotes' | 'assignedTo' | 'tags' | 'name' | 'email' | 'company' | 'projectId' | 'meetingDate' | 'meetingNotes'>>) =>
+    update: (id: string, data: Partial<Pick<Lead, 'status' | 'priority' | 'internalNotes' | 'assignedTo' | 'tags' | 'name' | 'email' | 'company' | 'projectId' | 'meetingDate' | 'meetingNotes' | 'attributes'>>) =>
       request<Lead>(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     delete: (id: string) => request<void>(`/api/leads/${id}`, { method: 'DELETE' }),
     calendar: (month: string) => request<Array<{
@@ -197,8 +197,9 @@ export const api = {
       greenApiInstanceId: string | null; greenApiTokenSet: boolean;
       greenApiWebhookUrl: string | null;
       assignmentMode: string; autoReplies: AutoRepliesConfig | null; slaTargetMinutes: number;
+      attributeDefs: AttributeDef[] | null;
     }>('/api/tenant/settings'),
-    updateEngagement: (data: { assignmentMode?: string; autoReplies?: AutoRepliesConfig | null; slaTargetMinutes?: number }) =>
+    updateEngagement: (data: { assignmentMode?: string; autoReplies?: AutoRepliesConfig | null; slaTargetMinutes?: number; attributeDefs?: AttributeDef[] }) =>
       request<{ success: boolean }>('/api/tenant/engagement', { method: 'PATCH', body: JSON.stringify(data) }),
     entitlements: () => request<{
       plan: string;

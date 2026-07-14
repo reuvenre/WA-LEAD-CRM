@@ -35,7 +35,7 @@ tenantRouter.get('/settings', async (req: Request, res: Response) => {
     select: {
       id: true, name: true, email: true, plan: true, active: true,
       greenApiInstanceId: true, greenApiToken: true, greenApiWebhookUrl: true,
-      assignmentMode: true, autoReplies: true, slaTargetMinutes: true,
+      assignmentMode: true, autoReplies: true, slaTargetMinutes: true, attributeDefs: true,
       createdAt: true,
     },
   });
@@ -57,13 +57,39 @@ tenantRouter.patch('/engagement', async (req: Request, res: Response) => {
     where: { id: req.user!.tenantId }, select: { plan: true },
   }))?.plan ?? 'TRIAL').features;
 
-  const { assignmentMode, autoReplies, slaTargetMinutes } = req.body as { assignmentMode?: string; autoReplies?: unknown; slaTargetMinutes?: number };
+  const { assignmentMode, autoReplies, slaTargetMinutes, attributeDefs } = req.body as {
+    assignmentMode?: string; autoReplies?: unknown; slaTargetMinutes?: number; attributeDefs?: unknown;
+  };
   const data: Record<string, unknown> = {};
 
   if (slaTargetMinutes !== undefined) {
     const n = Math.round(Number(slaTargetMinutes));
     if (!Number.isFinite(n) || n < 1 || n > 1440) return res.status(400).json({ error: 'יעד SLA חייב להיות בין 1 ל-1440 דקות' });
     data.slaTargetMinutes = n;
+  }
+
+  if (attributeDefs !== undefined) {
+    if (!feats.customAttributes) {
+      return res.status(403).json({ error: 'שדות מותאמים אינם כלולים במסלול הנוכחי — נדרש שדרוג', upgrade: true });
+    }
+    if (!Array.isArray(attributeDefs)) return res.status(400).json({ error: 'הגדרת שדות לא תקינה' });
+    // Normalize + validate each definition; a stable `key` is required and unique.
+    const seen = new Set<string>();
+    const defs: Array<{ key: string; label: string; type: string; options?: string[] }> = [];
+    for (const raw of attributeDefs as Array<Record<string, unknown>>) {
+      const key = String(raw.key ?? '').trim().slice(0, 40);
+      const label = String(raw.label ?? '').trim().slice(0, 60);
+      const type = ['text', 'number', 'select'].includes(String(raw.type)) ? String(raw.type) : 'text';
+      if (!key || !label || seen.has(key)) continue;
+      seen.add(key);
+      const def: { key: string; label: string; type: string; options?: string[] } = { key, label, type };
+      if (type === 'select' && Array.isArray(raw.options)) {
+        def.options = (raw.options as unknown[]).map((o) => String(o).trim()).filter(Boolean).slice(0, 30);
+      }
+      defs.push(def);
+      if (defs.length >= 30) break; // cap the number of custom fields
+    }
+    data.attributeDefs = defs;
   }
 
   if (assignmentMode !== undefined) {

@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { api, type AutoRepliesConfig } from '@/lib/api';
 import { useConfirm } from './useConfirm';
 import { decodeToken } from '@/lib/auth';
-import type { Template } from '@/types';
+import type { Template, AttributeDef } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
 
@@ -87,6 +87,7 @@ function EngagementSettings() {
   const [locked, setLocked] = useState(false);
   const [roundRobin, setRoundRobin] = useState(false);
   const [slaTarget, setSlaTarget] = useState(30);
+  const [attrDefs, setAttrDefs] = useState<AttributeDef[]>([]);
   const [cfg, setCfg] = useState<AutoRepliesConfig>(DEFAULT_AUTO);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -96,6 +97,7 @@ function EngagementSettings() {
       .then(([s, e]) => {
         setRoundRobin(s.assignmentMode === 'round_robin');
         setSlaTarget(s.slaTargetMinutes ?? 30);
+        setAttrDefs(s.attributeDefs ?? []);
         // Merge stored config over defaults so newly-added sub-fields always exist.
         const stored = s.autoReplies ?? {};
         setCfg({
@@ -112,7 +114,12 @@ function EngagementSettings() {
   const save = async () => {
     setSaving(true); setMsg(null);
     try {
-      await api.tenant.updateEngagement({ assignmentMode: roundRobin ? 'round_robin' : 'manual', autoReplies: cfg, slaTargetMinutes: slaTarget });
+      await api.tenant.updateEngagement({
+        assignmentMode: roundRobin ? 'round_robin' : 'manual',
+        autoReplies: cfg,
+        slaTargetMinutes: slaTarget,
+        attributeDefs: attrDefs.filter((d) => d.key.trim() && d.label.trim()),
+      });
       setMsg({ ok: true, text: 'ההגדרות נשמרו ✓' });
     } catch (err) {
       setMsg({ ok: false, text: err instanceof Error ? err.message : 'השמירה נכשלה' });
@@ -220,6 +227,50 @@ function EngagementSettings() {
           <span>דקות</span>
         </div>
       </AutoBlock>
+
+      <div className="h-px bg-surface-border" />
+
+      {/* Custom attribute definitions */}
+      <section className="space-y-2">
+        <div>
+          <h3 className="text-sm font-bold text-slate-800">שדות מותאמים</h3>
+          <p className="text-xs text-slate-500 mt-0.5">שדות נוספים שיופיעו בכרטיס הליד (למשל: תקציב, עיר, מקור).</p>
+        </div>
+        <div className="space-y-3">
+          {attrDefs.map((def, i) => (
+            <div key={i} className="space-y-1.5">
+              <div className="flex items-center gap-1.5">
+                <input value={def.label} placeholder="שם השדה"
+                  onChange={(e) => setAttrDefs((d) => d.map((x, j) => j === i ? { ...x, label: e.target.value } : x))}
+                  className="flex-1 px-2 py-1.5 text-sm rounded-lg border border-surface-border bg-surface-muted" />
+                <input value={def.key} placeholder="key" dir="ltr"
+                  onChange={(e) => setAttrDefs((d) => d.map((x, j) => j === i ? { ...x, key: e.target.value.replace(/[^a-zA-Z0-9_]/g, '') } : x))}
+                  className="w-24 px-2 py-1.5 text-xs font-mono rounded-lg border border-surface-border bg-surface-muted" />
+                <select value={def.type}
+                  onChange={(e) => setAttrDefs((d) => d.map((x, j) => j === i ? { ...x, type: e.target.value as AttributeDef['type'] } : x))}
+                  className="px-1 py-1.5 text-xs rounded-lg border border-surface-border bg-surface-muted">
+                  <option value="text">טקסט</option>
+                  <option value="number">מספר</option>
+                  <option value="select">בחירה</option>
+                </select>
+                <button type="button" onClick={() => setAttrDefs((d) => d.filter((_, j) => j !== i))}
+                  className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-400 hover:bg-red-50 hover:text-red-500">
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
+              {def.type === 'select' && (
+                <input value={(def.options ?? []).join(', ')} placeholder="אפשרויות מופרדות בפסיק (למשל: תל אביב, חיפה)"
+                  onChange={(e) => setAttrDefs((d) => d.map((x, j) => j === i ? { ...x, options: e.target.value.split(',').map((s) => s.trim()).filter(Boolean) } : x))}
+                  className="w-full px-2 py-1.5 text-xs rounded-lg border border-surface-border bg-surface-muted" />
+              )}
+            </div>
+          ))}
+          <button type="button" onClick={() => setAttrDefs((d) => [...d, { key: '', label: '', type: 'text' }])}
+            className="text-xs font-semibold text-brand-600 hover:text-brand-700 flex items-center gap-1">
+            <Plus className="w-3.5 h-3.5" /> הוסף שדה
+          </button>
+        </div>
+      </section>
 
       {msg && (
         <p className={cn('text-xs font-medium', msg.ok ? 'text-green-600' : 'text-red-500')}>{msg.text}</p>

@@ -17,5 +17,10 @@ export function applyTemplateVars(body: string, lead: Lead): string {
     .replace(/\{\{סטטוס\}\}/g, () => STATUS_LABELS[lead.status] ?? lead.status)
     .replace(/\{\{נציג\}\}/g, () => lead.assignedTo ?? '')
     .replace(/\{\{name\}\}/g, () => lead.name)
-    .replace(/\{\{phone\}\}/g, () => lead.phone ?? '');
+    .replace(/\{\{phone\}\}/g, () => lead.phone ?? '')
+    // Custom attribute values: {{attr:key}} → the lead's value for that field.
+    .replace(/\{\{attr:([a-zA-Z0-9_]+)\}\}/g, (_m, key: string) => {
+      const v = lead.attributes?.[key];
+      return v === undefined || v === null ? '' : String(v);
+    });
 }

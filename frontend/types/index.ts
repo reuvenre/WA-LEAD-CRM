@@ -34,10 +34,18 @@ export interface Lead {
   tags: string[];
   meetingDate: string | null;
   meetingNotes: string | null;
+  attributes?: Record<string, string | number> | null;
   createdAt: string;
   updatedAt: string;
   messages?: Message[];
   activities?: Activity[];
+}
+
+export interface AttributeDef {
+  key: string;
+  label: string;
+  type: 'text' | 'number' | 'select';
+  options?: string[];
 }
 
 export interface Message {

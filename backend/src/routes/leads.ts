@@ -8,6 +8,7 @@ import { checkLimit } from '../lib/entitlements';
 import { logActivity } from '../lib/activity';
 import { triggerAutomations } from '../lib/automations';
 import { syncLeadMeeting } from '../lib/google';
+import { parseDefs, sanitizeAttributes } from '../lib/attributes';
 
 export const leadsRouter = Router();
 
@@ -109,7 +110,7 @@ leadsRouter.get('/:id', async (req: Request, res: Response) => {
 leadsRouter.patch('/:id', async (req: Request, res: Response) => {
   try {
     const tenantId = req.user!.tenantId;
-    const { name, email, company, status, priority, internalNotes, assignedTo, tags, projectId, meetingDate, meetingNotes } = req.body;
+    const { name, email, company, status, priority, internalNotes, assignedTo, tags, projectId, meetingDate, meetingNotes, attributes } = req.body;
 
     const current = await prisma.lead.findFirst({ where: { id: req.params.id, tenantId } });
     if (!current || !canAccessLead(req, current.assignedTo)) return res.status(404).json({ error: 'Lead not found' });
@@ -147,6 +148,11 @@ leadsRouter.patch('/:id', async (req: Request, res: Response) => {
     }
     if (meetingDate !== undefined) updateData.meetingDate = meetingDate ? new Date(meetingDate) : null;
     if (meetingNotes !== undefined) updateData.meetingNotes = meetingNotes;
+    if (attributes !== undefined) {
+      // Only accept values for the tenant's defined custom fields (coerced by type).
+      const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { attributeDefs: true } });
+      updateData.attributes = sanitizeAttributes(parseDefs(tenant?.attributeDefs), attributes);
+    }
 
     const lead = await prisma.lead.update({ where: { id: req.params.id }, data: updateData });
 
