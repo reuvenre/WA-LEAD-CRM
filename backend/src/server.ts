@@ -16,6 +16,7 @@ import { authRouter } from './routes/auth';
 import { superAdminRouter } from './routes/superAdmin';
 import { tenantRouter } from './routes/tenant';
 import { googleRouter } from './routes/google';
+import { waImportRouter } from './routes/waImport';
 import { requireAuth } from './middleware/auth';
 import { requireFeature } from './lib/entitlements';
 import { initSocket, agentRoom } from './socket';
@@ -93,6 +94,7 @@ app.get('/health', async (_req, res) => {
 // ─── Protected routes ─────────────────────────────────────────────────────────
 app.use('/api/leads', requireAuth, leadsRouter);
 app.use('/api/messages', requireAuth, messagesRouter);
+app.use('/api/wa-import', requireAuth, waImportRouter);   // pull existing WhatsApp contacts + chat history
 app.use('/api/templates', requireAuth, templatesRouter);
 app.use('/api/analytics', requireAuth, requireFeature('analytics'), analyticsRouter);
 app.use('/api/automations', requireAuth, requireFeature('automations'), automationsRouter);

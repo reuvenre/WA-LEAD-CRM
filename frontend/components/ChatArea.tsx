@@ -12,6 +12,8 @@ import {
   Paperclip,
   FileText,
   ChevronRight,
+  History,
+  Loader2,
 } from 'lucide-react';
 import { TemplateSelector } from './TemplateSelector';
 import { cn, STATUS_CONFIG, formatFullTime, ALL_STATUSES } from '@/lib/utils';
@@ -25,12 +27,14 @@ interface ChatAreaProps {
   onLeadUpdate: (data: Partial<Lead>) => Promise<void>;
   onBack?: () => void;
   onNotify?: (msg: string) => void;
+  onLoadHistory?: () => Promise<void>;
 }
 
-export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpdate, onBack, onNotify }: ChatAreaProps) {
+export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpdate, onBack, onNotify, onLoadHistory }: ChatAreaProps) {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [loadingHistory, setLoadingHistory] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -65,6 +69,16 @@ export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpda
     setInput(body);
     textareaRef.current?.focus();
   }, []);
+
+  const handleLoadHistory = async () => {
+    if (!onLoadHistory || loadingHistory) return;
+    setLoadingHistory(true);
+    try {
+      await onLoadHistory();
+    } finally {
+      setLoadingHistory(false);
+    }
+  };
 
   const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -110,8 +124,21 @@ export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpda
           </div>
         </div>
 
-        {/* Status selector */}
-        <div className="flex items-center gap-3">
+        {/* Actions */}
+        <div className="flex items-center gap-2">
+          {onLoadHistory && (
+            <button
+              onClick={handleLoadHistory}
+              disabled={loadingHistory}
+              className="flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full border border-surface-border text-slate-500 hover:bg-surface-subtle transition disabled:opacity-60 disabled:cursor-wait"
+              title="טען את היסטוריית השיחה מוואטסאפ"
+            >
+              {loadingHistory
+                ? <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                : <History className="w-3.5 h-3.5" />}
+              <span className="hidden sm:inline">{loadingHistory ? 'טוען…' : 'טען היסטוריה'}</span>
+            </button>
+          )}
           <StatusSelector
             current={lead.status as LeadStatus}
             onChange={(status) => onLeadUpdate({ status })}

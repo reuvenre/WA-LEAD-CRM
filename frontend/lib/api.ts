@@ -103,6 +103,16 @@ export const api = {
     },
   },
 
+  // Pull existing WhatsApp data into the CRM.
+  waImport: {
+    // Bulk-create a lead per WhatsApp contact (manager only). Returns import counts.
+    contacts: () => request<{ created: number; skipped: number; total: number; capReached: boolean }>(
+      '/api/wa-import/contacts', { method: 'POST' }),
+    // On-demand: load one chat's past messages into the given lead.
+    history: (leadId: string, count?: number) => request<{ imported: number; skipped: number; total: number }>(
+      `/api/wa-import/history/${leadId}`, { method: 'POST', body: JSON.stringify(count ? { count } : {}) }),
+  },
+
   templates: {
     list: () => request<Template[]>('/api/templates'),
     create: (data: Omit<Template, 'id'>) =>

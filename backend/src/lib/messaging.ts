@@ -23,6 +23,27 @@ export interface OutboundResult {
   error?: string;
 }
 
+// ─── Read/import shapes (pulling existing WhatsApp data into the CRM) ──────────
+// One contact from the connected WhatsApp account, normalized for lead creation.
+export interface ImportedContact {
+  phone: string; // digits only, international (no '+'), e.g. "972501234567"
+  name: string;  // phone-book name → profile name → the phone as a last resort
+}
+
+// One historical message, normalized to our Message columns.
+export interface ImportedMessage {
+  externalId: string | null; // provider message id (idMessage) — used to dedup
+  direction: 'inbound' | 'outbound';
+  type: 'text' | 'image' | 'document';
+  content: string;
+  mediaUrl: string | null;
+  fileName: string | null;
+  timestamp: Date;
+}
+
+export interface ContactsResult { success: boolean; contacts?: ImportedContact[]; error?: string }
+export interface HistoryResult { success: boolean; messages?: ImportedMessage[]; error?: string }
+
 export interface MessagingProvider {
   sendText(creds: LineCreds, phone: string, text: string): Promise<OutboundResult>;
   sendFile(
@@ -30,6 +51,10 @@ export interface MessagingProvider {
   ): Promise<OutboundResult>;
   // Point the provider's inbound webhook at `webhookUrl`. Returns whether it succeeded.
   configureWebhook(creds: LineCreds, webhookUrl: string | null): Promise<boolean>;
+  // Pull the account's contact list (for bulk lead import). Groups are excluded.
+  listContacts(creds: LineCreds): Promise<ContactsResult>;
+  // Pull the past messages of one chat (on-demand history load for a lead).
+  getChatHistory(creds: LineCreds, phone: string, count: number): Promise<HistoryResult>;
 }
 
 // ─── Green API ────────────────────────────────────────────────────────────────
@@ -105,13 +130,129 @@ const greenApiProvider: MessagingProvider = {
       return false;
     }
   },
+
+  async listContacts(creds) {
+    const { greenApiInstanceId: id, greenApiToken: token } = creds;
+    if (!id || !token) return { success: false, error: NOT_CONNECTED };
+    try {
+      const r = await fetch(
+        `https://api.green-api.com/waInstance${id}/getContacts/${encodeURIComponent(token)}`,
+        { method: 'GET', signal: AbortSignal.timeout(30_000) },
+      );
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({})) as { message?: string };
+        return { success: false, error: e.message ?? `Green API HTTP ${r.status}` };
+      }
+      const raw = await r.json() as Array<{ id?: string; name?: string; contactName?: string; type?: string }>;
+      const contacts: ImportedContact[] = [];
+      for (const c of Array.isArray(raw) ? raw : []) {
+        const cid = c.id ?? '';
+        // Only 1:1 user chats — skip groups (@g.us) and anything without a user chatId.
+        if (!cid.endsWith('@c.us')) continue;
+        const phone = cid.replace('@c.us', '').replace(/\D/g, '');
+        if (!phone) continue;
+        const name = (c.contactName?.trim() || c.name?.trim() || phone);
+        contacts.push({ phone, name });
+      }
+      return { success: true, contacts };
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  },
+
+  async getChatHistory(creds, phone, count) {
+    const { greenApiInstanceId: id, greenApiToken: token } = creds;
+    if (!id || !token) return { success: false, error: NOT_CONNECTED };
+    try {
+      const r = await fetch(`https://api.green-api.com/waInstance${id}/getChatHistory/${encodeURIComponent(token)}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ chatId: `${phone}@c.us`, count }),
+        signal: AbortSignal.timeout(30_000),
+      });
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({})) as { message?: string };
+        return { success: false, error: e.message ?? `Green API HTTP ${r.status}` };
+      }
+      const raw = await r.json() as GreenHistoryItem[];
+      const messages: ImportedMessage[] = [];
+      for (const m of Array.isArray(raw) ? raw : []) {
+        const mapped = mapGreenHistoryItem(m);
+        if (mapped) messages.push(mapped);
+      }
+      return { success: true, messages };
+    } catch (err) {
+      return { success: false, error: String(err) };
+    }
+  },
 };
+
+// The subset of a getChatHistory item we read. Green API has varied the exact shape
+// over time (flat `textMessage`/`downloadUrl` vs. nested `*Data` objects), so we read
+// both defensively rather than trust a single layout.
+interface GreenHistoryItem {
+  type?: string;            // 'incoming' | 'outgoing'
+  idMessage?: string;
+  timestamp?: number;       // unix seconds
+  typeMessage?: string;     // textMessage | extendedTextMessage | imageMessage | documentMessage | ...
+  textMessage?: string;
+  caption?: string;
+  downloadUrl?: string;
+  fileName?: string;
+  extendedTextMessage?: { text?: string };
+  textMessageData?: { textMessage?: string };
+  fileMessageData?: { downloadUrl?: string; caption?: string; fileName?: string };
+  extendedTextMessageData?: { text?: string };
+}
+
+function mapGreenHistoryItem(m: GreenHistoryItem): ImportedMessage | null {
+  const direction: 'inbound' | 'outbound' = m.type === 'outgoing' ? 'outbound' : 'inbound';
+  const externalId = m.idMessage ? String(m.idMessage) : null;
+  const timestamp = m.timestamp ? new Date(m.timestamp * 1000) : new Date();
+
+  const tm = m.typeMessage;
+  let type: 'text' | 'image' | 'document' = 'text';
+  let content = '';
+  let mediaUrl: string | null = null;
+  let fileName: string | null = null;
+
+  if (tm === 'imageMessage') {
+    type = 'image';
+    mediaUrl = m.downloadUrl ?? m.fileMessageData?.downloadUrl ?? null;
+    content = m.caption ?? m.fileMessageData?.caption ?? '';
+    fileName = m.fileName ?? m.fileMessageData?.fileName ?? null;
+  } else if (tm === 'documentMessage') {
+    type = 'document';
+    mediaUrl = m.downloadUrl ?? m.fileMessageData?.downloadUrl ?? null;
+    content = m.caption ?? m.fileMessageData?.caption ?? '';
+    fileName = m.fileName ?? m.fileMessageData?.fileName ?? null;
+  } else if (tm === 'textMessage' || tm === 'extendedTextMessage' || tm === undefined) {
+    content = m.textMessage
+      ?? m.textMessageData?.textMessage
+      ?? m.extendedTextMessage?.text
+      ?? m.extendedTextMessageData?.text
+      ?? '';
+  } else {
+    // Unsupported kinds (audio, video, location, contact, ...) — skip rather than
+    // store an empty bubble the chat can't render.
+    return null;
+  }
+
+  // A text message with no text, or a media message with no downloadable file, carries
+  // nothing to show — drop it.
+  if (!content && !mediaUrl) return null;
+  return { externalId, direction, type, content, mediaUrl, fileName, timestamp };
+}
 
 // ─── Meta Cloud API (Phase 3 — not yet implemented) ──────────────────────────
 const metaProvider: MessagingProvider = {
   async sendText() { return { success: false, error: 'Meta provider not implemented yet' }; },
   async sendFile() { return { success: false, error: 'Meta provider not implemented yet' }; },
   async configureWebhook() { return false; },
+  // Meta's Cloud API doesn't expose a contact list or historical chat backfill, so
+  // import isn't available on Meta lines — surface a clear message instead of failing opaquely.
+  async listContacts() { return { success: false, error: 'ייבוא אנשי קשר אינו נתמך בספק Meta' }; },
+  async getChatHistory() { return { success: false, error: 'טעינת היסטוריה אינה נתמכת בספק Meta' }; },
 };
 
 export function getProvider(provider: LineProviderName): MessagingProvider {

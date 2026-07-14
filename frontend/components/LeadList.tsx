@@ -1,6 +1,6 @@
 'use client';
 
-import { Search, Users, ChevronDown, Plus } from 'lucide-react';
+import { Search, Users, ChevronDown, Plus, DownloadCloud, Loader2 } from 'lucide-react';
 import { cn, STATUS_CONFIG, formatTime, ALL_STATUSES } from '@/lib/utils';
 import type { Lead, LeadStatus } from '@/types';
 
@@ -14,6 +14,8 @@ interface LeadListProps {
   onStatusFilterChange: (status: string) => void;
   onSearchChange: (search: string) => void;
   onAddLead?: () => void;
+  onImportWhatsapp?: () => void;
+  importing?: boolean;
 }
 
 export function LeadList({
@@ -26,6 +28,8 @@ export function LeadList({
   onStatusFilterChange,
   onSearchChange,
   onAddLead,
+  onImportWhatsapp,
+  importing,
 }: LeadListProps) {
   return (
     <div className="flex flex-col h-full">
@@ -42,6 +46,16 @@ export function LeadList({
             <span className="text-xs text-slate-400 bg-surface-subtle px-2 py-0.5 rounded-full">
               {leads.length}
             </span>
+            {onImportWhatsapp && (
+              <button
+                onClick={onImportWhatsapp}
+                disabled={importing}
+                className="w-7 h-7 flex items-center justify-center rounded-lg border border-surface-border text-slate-500 hover:bg-surface-subtle transition disabled:opacity-60 disabled:cursor-wait"
+                title="ייבוא אנשי קשר מוואטסאפ"
+              >
+                {importing ? <Loader2 className="w-4 h-4 animate-spin" /> : <DownloadCloud className="w-4 h-4" />}
+              </button>
+            )}
             {onAddLead && (
               <button
                 onClick={onAddLead}

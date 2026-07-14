@@ -46,6 +46,7 @@ export default function CRMPage() {
     () => (decodeToken()?.role === 'AGENT' ? 'chat' : 'dashboard')
   );
   const [showAddLead, setShowAddLead] = useState(false);
+  const [importingContacts, setImportingContacts] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showSuperAdmin, setShowSuperAdmin] = useState(false);
   const { ready, logout } = useAuth();
@@ -227,6 +228,37 @@ export default function CRMPage() {
     setViewMode('chat');
   };
 
+  // Bulk-import the WhatsApp contact list as leads (manager action).
+  const handleImportWhatsapp = async () => {
+    if (importingContacts) return;
+    setImportingContacts(true);
+    try {
+      const r = await api.waImport.contacts();
+      await loadLeads();
+      const parts = [`יובאו ${r.created} אנשי קשר`];
+      if (r.skipped) parts.push(`${r.skipped} כבר קיימים`);
+      if (r.capReached) parts.push('הגעת למגבלת הלידים במסלול');
+      setToast(parts.join(' · '));
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'ייבוא אנשי הקשר נכשל');
+    } finally {
+      setImportingContacts(false);
+    }
+  };
+
+  // On-demand: pull the selected chat's past messages from WhatsApp into the CRM.
+  const handleLoadHistory = async () => {
+    const leadId = selectedLeadId;
+    if (!leadId) return;
+    const r = await api.waImport.history(leadId);
+    // Re-fetch so the imported (older) messages slot into the feed in timestamp order.
+    if (selectedLeadIdRef.current === leadId) {
+      const fresh = await api.messages.list(leadId);
+      if (selectedLeadIdRef.current === leadId) setMessages(fresh);
+    }
+    setToast(r.imported > 0 ? `נטענו ${r.imported} הודעות מההיסטוריה` : 'אין הודעות חדשות לטעינה');
+  };
+
   const handleLeadDelete = async () => {
     if (!selectedLeadId) return;
     const id = selectedLeadId;
@@ -294,6 +326,12 @@ export default function CRMPage() {
             onStatusFilterChange={setStatusFilter}
             onSearchChange={setSearch}
             onAddLead={() => setShowAddLead(true)}
+            onImportWhatsapp={
+              ['MANAGER', 'ADMIN', 'SUPER_ADMIN'].includes(currentUser?.role ?? '')
+                ? handleImportWhatsapp
+                : undefined
+            }
+            importing={importingContacts}
           />
         </aside>
       )}
@@ -359,6 +397,7 @@ export default function CRMPage() {
             onLeadUpdate={handleLeadUpdate}
             onBack={() => setSelectedLeadId(null)}
             onNotify={setToast}
+            onLoadHistory={handleLoadHistory}
           />
         ) : (
           <EmptyState onAddLead={() => setShowAddLead(true)} />
