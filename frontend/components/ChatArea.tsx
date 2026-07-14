@@ -14,9 +14,12 @@ import {
   ChevronRight,
   History,
   Loader2,
+  CalendarClock,
+  X,
 } from 'lucide-react';
 import { TemplateSelector } from './TemplateSelector';
 import { cn, STATUS_CONFIG, formatFullTime, ALL_STATUSES } from '@/lib/utils';
+import { api, type ScheduledMessage } from '@/lib/api';
 import type { Lead, Message, LeadStatus } from '@/types';
 
 interface ChatAreaProps {
@@ -28,14 +31,18 @@ interface ChatAreaProps {
   onBack?: () => void;
   onNotify?: (msg: string) => void;
   onLoadHistory?: () => Promise<void>;
+  schedulingEnabled?: boolean;
 }
 
-export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpdate, onBack, onNotify, onLoadHistory }: ChatAreaProps) {
+export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpdate, onBack, onNotify, onLoadHistory, schedulingEnabled = true }: ChatAreaProps) {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [showTemplates, setShowTemplates] = useState(false);
+  const [showScheduler, setShowScheduler] = useState(false);
+  const [scheduleAt, setScheduleAt] = useState('');
+  const [scheduled, setScheduled] = useState<ScheduledMessage[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -78,6 +85,41 @@ export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpda
     } finally {
       setLoadingHistory(false);
     }
+  };
+
+  // Load this lead's pending scheduled messages (reset when switching leads).
+  useEffect(() => {
+    setScheduled([]);
+    setShowScheduler(false);
+    if (!schedulingEnabled) return;
+    let stale = false;
+    api.messages.listScheduled(lead.id).then((s) => { if (!stale) setScheduled(s); }).catch(() => {});
+    return () => { stale = true; };
+  }, [lead.id, schedulingEnabled]);
+
+  const handleSchedule = async () => {
+    const content = input.trim();
+    if (!content) { onNotify?.('כתוב הודעה לפני התזמון'); return; }
+    if (!scheduleAt) { onNotify?.('בחר תאריך ושעה'); return; }
+    const when = new Date(scheduleAt);
+    if (isNaN(when.getTime()) || when.getTime() < Date.now() + 60_000) {
+      onNotify?.('זמן השליחה חייב להיות בעתיד'); return;
+    }
+    try {
+      const job = await api.messages.schedule(lead.id, content, when.toISOString());
+      setScheduled((prev) => [...prev, job].sort((a, b) => a.runAt.localeCompare(b.runAt)));
+      setInput('');
+      setScheduleAt('');
+      setShowScheduler(false);
+      onNotify?.('ההודעה תוזמנה ✓');
+    } catch (err) {
+      onNotify?.(err instanceof Error ? err.message : 'התזמון נכשל');
+    }
+  };
+
+  const cancelScheduled = async (id: string) => {
+    setScheduled((prev) => prev.filter((s) => s.id !== id));
+    await api.messages.cancelScheduled(id).catch(() => {});
   };
 
   const handleFilePick = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -173,6 +215,36 @@ export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpda
 
       {/* ── Input Area ── */}
       <div className="flex-shrink-0 bg-white border-t border-surface-border px-4 py-3">
+        {/* Pending scheduled messages for this conversation */}
+        {scheduled.length > 0 && (
+          <div className="mb-2 space-y-1">
+            {scheduled.map((s) => (
+              <div key={s.id} className="flex items-center gap-2 text-xs bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+                <CalendarClock className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                <span className="text-amber-800 font-medium flex-shrink-0">{formatFullTime(s.runAt)}</span>
+                <span className="text-slate-600 truncate flex-1">{s.content}</span>
+                <button onClick={() => cancelScheduled(s.id)} aria-label="בטל תזמון"
+                  className="w-5 h-5 flex items-center justify-center rounded hover:bg-amber-100 text-amber-700 flex-shrink-0">
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Scheduler popover */}
+        {showScheduler && (
+          <div className="mb-2 flex items-center gap-2 bg-surface-subtle rounded-lg px-3 py-2">
+            <CalendarClock className="w-4 h-4 text-brand-600 flex-shrink-0" />
+            <input type="datetime-local" value={scheduleAt} onChange={(e) => setScheduleAt(e.target.value)}
+              className="flex-1 px-2 py-1 text-sm rounded-lg border border-surface-border bg-white focus:outline-none focus:ring-2 focus:ring-brand-500" />
+            <button onClick={handleSchedule}
+              className="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5 whitespace-nowrap">
+              תזמן
+            </button>
+          </div>
+        )}
+
         <div className="flex items-end gap-2">
           {/* Templates button */}
           <div className="relative flex-shrink-0">
@@ -218,6 +290,20 @@ export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpda
           >
             {uploading ? <Clock className="w-4 h-4 animate-pulse" /> : <Paperclip className="w-4 h-4" />}
           </button>
+
+          {/* Schedule (send later) button */}
+          {schedulingEnabled && (
+            <button
+              onClick={() => setShowScheduler((v) => !v)}
+              className={cn(
+                'w-9 h-9 flex items-center justify-center rounded-lg border transition flex-shrink-0',
+                showScheduler ? 'bg-brand-600 border-brand-600 text-white' : 'border-surface-border text-slate-500 hover:bg-surface-subtle'
+              )}
+              title="תזמון שליחה"
+            >
+              <CalendarClock className="w-4 h-4" />
+            </button>
+          )}
 
           {/* Textarea */}
           <textarea

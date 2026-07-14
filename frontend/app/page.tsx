@@ -398,6 +398,7 @@ export default function CRMPage() {
             onBack={() => setSelectedLeadId(null)}
             onNotify={setToast}
             onLoadHistory={handleLoadHistory}
+            schedulingEnabled={!features || features.scheduledMessages !== false}
           />
         ) : (
           <EmptyState onAddLead={() => setShowAddLead(true)} />

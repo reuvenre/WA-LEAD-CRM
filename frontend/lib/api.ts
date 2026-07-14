@@ -16,6 +16,8 @@ export interface ListingRow {
 }
 export interface REClientRow { id: string; name: string; phone: string | null; city: string | null; rooms: number; budgetMax: number; deliveryBy: string | null; linkedToWhatsapp?: boolean }
 
+export interface ScheduledMessage { id: string; runAt: string; content: string }
+
 // Auto-reply configuration (greeting / off-hours / away), stored as JSON on the tenant.
 export interface AutoRepliesConfig {
   greeting?: { enabled: boolean; text: string };
@@ -108,6 +110,11 @@ export const api = {
         body: JSON.stringify({ leadId, fileBase64, fileName: file.name, mimeType: file.type, caption }),
       });
     },
+    // Scheduled ("send later") messages.
+    schedule: (leadId: string, content: string, sendAt: string) =>
+      request<ScheduledMessage>('/api/messages/schedule', { method: 'POST', body: JSON.stringify({ leadId, content, sendAt }) }),
+    listScheduled: (leadId: string) => request<ScheduledMessage[]>(`/api/messages/scheduled/${leadId}`),
+    cancelScheduled: (jobId: string) => request<void>(`/api/messages/scheduled/${jobId}`, { method: 'DELETE' }),
   },
 
   // Pull existing WhatsApp data into the CRM.
