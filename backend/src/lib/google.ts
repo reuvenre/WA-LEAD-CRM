@@ -132,7 +132,7 @@ export async function getGoogleUserInfo(accessToken: string): Promise<{ id: stri
 type SyncableLead = {
   id: string;
   name: string;
-  phone: string;
+  phone: string | null; // non-WhatsApp channels (webchat/IG/Messenger) have no phone
   company: string | null;
   meetingDate: Date | null;
   meetingNotes: string | null;
@@ -145,7 +145,7 @@ function eventBody(lead: SyncableLead) {
   const end = new Date(start.getTime() + 30 * 60 * 1000);
   return {
     summary: `פגישה: ${lead.name}`,
-    description: [lead.meetingNotes, `טלפון: +${lead.phone}`, lead.company]
+    description: [lead.meetingNotes, lead.phone ? `טלפון: +${lead.phone}` : null, lead.company]
       .filter(Boolean)
       .join('\n'),
     start: { dateTime: start.toISOString() },

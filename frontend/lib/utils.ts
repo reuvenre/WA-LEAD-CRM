@@ -1,6 +1,6 @@
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
-import type { LeadStatus, Priority } from '@/types';
+import type { LeadStatus, Priority, LeadChannel } from '@/types';
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -101,6 +101,17 @@ export const PRIORITY_CONFIG: Record<Priority, { label: string; color: string }>
   Low: { label: 'נמוכה', color: 'text-slate-500' },
   Med: { label: 'בינונית', color: 'text-amber-600' },
   High: { label: 'גבוהה', color: 'text-red-600' },
+};
+
+// Which channel a conversation lives on — badge styling per channel.
+export const CHANNEL_CONFIG: Record<
+  LeadChannel,
+  { label: string; color: string; bg: string; dot: string }
+> = {
+  WHATSAPP: { label: 'וואטסאפ', color: 'text-emerald-700', bg: 'bg-emerald-50', dot: 'bg-[#25D366]' },
+  WEBCHAT: { label: 'אתר', color: 'text-sky-700', bg: 'bg-sky-50', dot: 'bg-sky-500' },
+  INSTAGRAM: { label: 'אינסטגרם', color: 'text-fuchsia-700', bg: 'bg-fuchsia-50', dot: 'bg-gradient-to-tr from-amber-400 via-pink-500 to-purple-600' },
+  MESSENGER: { label: 'מסנג\'ר', color: 'text-blue-700', bg: 'bg-blue-50', dot: 'bg-[#0084FF]' },
 };
 
 export const ALL_STATUSES: LeadStatus[] = ['NEW', 'IN_PROGRESS', 'HOT', 'CLOSED', 'LOST', 'IRRELEVANT'];

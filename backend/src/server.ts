@@ -17,6 +17,7 @@ import { superAdminRouter } from './routes/superAdmin';
 import { tenantRouter } from './routes/tenant';
 import { googleRouter } from './routes/google';
 import { waImportRouter } from './routes/waImport';
+import { startJobRunner, stopJobRunner } from './lib/jobs';
 import { requireAuth } from './middleware/auth';
 import { requireFeature } from './lib/entitlements';
 import { initSocket, agentRoom } from './socket';
@@ -139,6 +140,7 @@ const PORT = Number(process.env.PORT) || 3001;
 httpServer.listen(PORT, '::', () => {
   console.log(`🚀 Server running on port ${PORT} (bound to :: / dual-stack)`);
   console.log(`🔌 Socket.io with tenant rooms enabled`);
+  startJobRunner();
 });
 
 // ─── Resilience ────────────────────────────────────────────────────────────────
@@ -157,6 +159,7 @@ async function shutdown(signal: string) {
   if (shuttingDown) return;
   shuttingDown = true;
   console.log(`⏳ ${signal} received — shutting down gracefully…`);
+  stopJobRunner();
   io.close();
   httpServer.close(() => console.log('✅ HTTP server closed'));
   try { await prisma.$disconnect(); } catch { /* ignore */ }

@@ -118,7 +118,7 @@ export function ChatArea({ lead, messages, onSendMessage, onSendFile, onLeadUpda
             <div className="flex items-center gap-1.5 mt-0.5">
               <Phone className="w-3 h-3 text-slate-400" />
               <span className="text-xs text-slate-500 font-mono" dir="ltr">
-                +{lead.phone}
+                {lead.phone ? `+${lead.phone}` : '—'}
               </span>
             </div>
           </div>

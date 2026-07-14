@@ -81,7 +81,7 @@ export const api = {
       request<Lead>(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     delete: (id: string) => request<void>(`/api/leads/${id}`, { method: 'DELETE' }),
     calendar: (month: string) => request<Array<{
-      id: string; name: string; phone: string; status: string;
+      id: string; name: string; phone: string | null; status: string;
       meetingDate: string; meetingNotes: string | null; assignedTo: string | null;
       project: { name: string; color: string } | null;
     }>>(`/api/leads/calendar?month=${month}`),

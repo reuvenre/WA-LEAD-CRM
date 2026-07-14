@@ -126,7 +126,7 @@ export function LeadDetails({ lead, onUpdate, onDelete }: LeadDetailsProps) {
               </div>
               <div className="bg-surface-subtle rounded-xl p-3 space-y-2.5 mt-2">
                 <InfoRow icon={<Phone className="w-3.5 h-3.5" />} label="טלפון">
-                  <span className="font-mono text-slate-700 text-xs" dir="ltr">+{lead.phone}</span>
+                  <span className="font-mono text-slate-700 text-xs" dir="ltr">{lead.phone ? `+${lead.phone}` : '—'}</span>
                 </InfoRow>
                 <InfoRow icon={<Calendar className="w-3.5 h-3.5" />} label="הודעה אחרונה">
                   <span className="text-slate-600">{formatTime(lead.lastMessageAt)}</span>

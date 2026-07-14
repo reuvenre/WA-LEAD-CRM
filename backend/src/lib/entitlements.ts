@@ -89,24 +89,35 @@ export async function checkLimit(req: Request, res: Response, model: CountModel)
 }
 
 // ─── Daily anti-ban cap, using the existing Line.dailyCount columns ───────────
-// Call right before an outbound send. Resets the counter when the date rolls over.
-// Returns true if the send may proceed (and increments the counter).
-export async function checkAndBumpDailyCap(
-  req: Request, res: Response,
+// Core (Express-free — also callable from job handlers, e.g. scheduled sends and
+// broadcast campaigns): resets the counter when the date rolls over, increments it,
+// and reports whether the send may proceed.
+export async function tryBumpDailyCap(
+  tenantId: string,
   line: { id: string; dailyCount: number; dailyCountDate: Date | null } | null,
-): Promise<boolean> {
-  if (!line) return true; // no line yet (legacy tenant) — the tenant-level creds still send
-  const cap = entitlementsFor(await planOf(req.user!.tenantId)).dailyMsgCapPerLine;
+): Promise<{ ok: boolean; cap: number }> {
+  const cap = entitlementsFor(await planOf(tenantId)).dailyMsgCapPerLine;
+  if (!line) return { ok: true, cap }; // no line yet (legacy tenant) — the tenant-level creds still send
   const today = new Date().toISOString().slice(0, 10);
   const lineDay = line.dailyCountDate?.toISOString().slice(0, 10) ?? null;
   const countToday = lineDay === today ? line.dailyCount : 0;
-  if (countToday >= cap) {
-    res.status(429).json({ error: `הגעת למגבלת ההודעות היומית (${cap}) — הגנת אנטי-באן`, upgrade: true });
-    return false;
-  }
+  if (countToday >= cap) return { ok: false, cap };
   await prisma.line.update({
     where: { id: line.id },
     data: { dailyCount: lineDay === today ? { increment: 1 } : 1, dailyCountDate: new Date() },
   });
-  return true;
+  return { ok: true, cap };
+}
+
+// Express wrapper: call right before an outbound send from a route handler.
+// Returns true if the send may proceed; sends the 429 itself otherwise.
+export async function checkAndBumpDailyCap(
+  req: Request, res: Response,
+  line: { id: string; dailyCount: number; dailyCountDate: Date | null } | null,
+): Promise<boolean> {
+  const { ok, cap } = await tryBumpDailyCap(req.user!.tenantId, line);
+  if (!ok) {
+    res.status(429).json({ error: `הגעת למגבלת ההודעות היומית (${cap}) — הגנת אנטי-באן`, upgrade: true });
+  }
+  return ok;
 }

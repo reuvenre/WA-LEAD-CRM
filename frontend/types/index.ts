@@ -1,5 +1,6 @@
 export type LeadStatus = 'NEW' | 'IN_PROGRESS' | 'HOT' | 'CLOSED' | 'LOST' | 'IRRELEVANT';
 export type Priority = 'Low' | 'Med' | 'High';
+export type LeadChannel = 'WHATSAPP' | 'WEBCHAT' | 'INSTAGRAM' | 'MESSENGER';
 export type MessageType = 'text' | 'image' | 'document';
 export type MessageDirection = 'inbound' | 'outbound';
 export type MessageStatus = 'sending' | 'sent' | 'delivered' | 'read' | 'failed';
@@ -19,7 +20,10 @@ export interface Lead {
   name: string;
   email: string | null;
   company: string | null;
-  phone: string;
+  // Null for non-WhatsApp channels (webchat / Instagram / Messenger contacts have no phone)
+  phone: string | null;
+  channel: LeadChannel;
+  externalId?: string | null;
   status: LeadStatus;
   priority: Priority;
   projectId: string | null;

@@ -257,7 +257,7 @@ export function ProjectsView({ onLeadClick, onNavigate, onSettings, onLogout }: 
                           </span>
                         </div>
                         <div className="flex items-center justify-between text-xs text-slate-500">
-                          <span dir="ltr">+{lead.phone}</span>
+                          <span dir="ltr">{lead.phone ? `+${lead.phone}` : '—'}</span>
                           {lead.assignedTo && <span>🧑‍💼 {lead.assignedTo}</span>}
                         </div>
                       </div>

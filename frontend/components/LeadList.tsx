@@ -160,7 +160,7 @@ function LeadItem({
           <p className="text-xs text-slate-500 truncate leading-relaxed">
             {lastMsg
               ? (lastMsg.direction === 'outbound' ? '↩ ' : '') + lastMsg.content
-              : lead.phone}
+              : lead.phone ?? ''}
           </p>
           <span
             className={cn(

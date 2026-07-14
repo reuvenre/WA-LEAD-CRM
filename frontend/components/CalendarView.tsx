@@ -15,7 +15,7 @@ function toLocalInput(d: Date) {
 interface CalendarMeeting {
   id: string;
   name: string;
-  phone: string;
+  phone: string | null;
   status: string;
   meetingDate: string;
   meetingNotes: string | null;
@@ -398,13 +398,13 @@ function MeetingDetailsModal({ meeting, onClose, onOpenChat, onEdit, onCleared }
 // ─── Schedule a meeting: pick a client, set date/time, save onto the lead ──────
 function NewMeetingModal({ defaultDate, initial, onClose, onSaved }: {
   defaultDate: Date | null;
-  initial?: { id: string; name: string; phone: string; when: string; notes: string };
+  initial?: { id: string; name: string; phone: string | null; when: string; notes: string };
   onClose: () => void;
   onSaved: () => void;
 }) {
   const [query, setQuery] = useState('');
-  const [results, setResults] = useState<Array<{ id: string; name: string; phone: string }>>([]);
-  const [selected, setSelected] = useState<{ id: string; name: string; phone: string } | null>(
+  const [results, setResults] = useState<Array<{ id: string; name: string; phone: string | null }>>([]);
+  const [selected, setSelected] = useState<{ id: string; name: string; phone: string | null } | null>(
     initial ? { id: initial.id, name: initial.name, phone: initial.phone } : null,
   );
   const [when, setWhen] = useState(initial?.when ?? (defaultDate ? toLocalInput(defaultDate) : ''));

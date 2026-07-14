@@ -35,6 +35,15 @@ enum LineProvider {
   META
 }
 
+// Which channel a conversation lives on. WhatsApp leads keep their phone identity;
+// webchat/IG/Messenger contacts have no phone and are keyed by (channel, externalId).
+enum LeadChannel {
+  WHATSAPP
+  WEBCHAT
+  INSTAGRAM
+  MESSENGER
+}
+
 enum MessageDirection {
   inbound
   outbound
@@ -84,6 +93,7 @@ model Tenant {
   projects     Project[]
   templates    Template[]
   automations  AutomationWebhook[]
+  jobs         Job[]
   // Real-estate domain (added in phase-2 integration)
   deals        Deal[]
   properties   Property[]
@@ -151,7 +161,13 @@ model Lead {
   name          String
   email         String?
   company       String?
-  phone         String
+  // Nullable since multi-channel: webchat/IG/Messenger contacts have no phone.
+  // WhatsApp leads always have one (all WhatsApp code paths pass a normalized phone).
+  phone         String?
+  // Channel identity for non-phone channels: externalId is the channel-scoped id
+  // (webchat visitorId, Messenger PSID, Instagram IGSID).
+  channel       LeadChannel @default(WHATSAPP)
+  externalId    String?
   status        LeadStatus @default(NEW)
   priority      Priority   @default(Med)
   lastMessageAt DateTime?
@@ -168,11 +184,34 @@ model Lead {
   createdAt     DateTime   @default(now())
   updatedAt     DateTime   @updatedAt
 
+  // NOTE: Postgres composite unique indexes skip rows where any column is NULL, so
+  // multiple NULL-phone leads coexist and this constraint only binds WhatsApp leads.
   @@unique([tenantId, phone])
+  @@unique([tenantId, channel, externalId])
   @@index([tenantId, lastMessageAt])
   @@index([tenantId, meetingDate])
   @@index([projectId])
   @@index([lineId])
+}
+
+// A deferred unit of work (scheduled message, campaign step, CSAT survey, ...).
+// Polled by lib/jobs.ts every few seconds — fits the single-instance deployment;
+// scaling to replicas later means externalizing this to a real queue.
+model Job {
+  id        String   @id @default(cuid())
+  tenantId  String
+  tenant    Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  type      String   // handler key, e.g. 'send_message'
+  runAt     DateTime // don't pick up before this time
+  payload   Json?
+  status    String   @default("pending") // pending | running | done | failed | cancelled
+  attempts  Int      @default(0)
+  lastError String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status, runAt])
+  @@index([tenantId])
 }
 
 // A WhatsApp line = one phone number = one set of provider credentials. A tenant may

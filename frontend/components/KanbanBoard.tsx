@@ -207,7 +207,7 @@ function KanbanCard({
       {/* Phone */}
       <div className="flex items-center gap-1 text-[11px] text-slate-400 mb-2">
         <Phone className="w-3 h-3" />
-        <span dir="ltr">{lead.phone}</span>
+        <span dir="ltr">{lead.phone ?? '—'}</span>
       </div>
 
       {/* Project badge */}
