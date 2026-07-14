@@ -1,6 +1,7 @@
 'use client';
 
-import { Search, Users, ChevronDown, Plus, DownloadCloud, Loader2 } from 'lucide-react';
+import { useState } from 'react';
+import { Search, Users, ChevronDown, Plus, DownloadCloud, Loader2, CheckSquare, Trash2, X } from 'lucide-react';
 import { cn, STATUS_CONFIG, formatTime, ALL_STATUSES } from '@/lib/utils';
 import type { Lead, LeadStatus } from '@/types';
 
@@ -16,6 +17,7 @@ interface LeadListProps {
   onAddLead?: () => void;
   onImportWhatsapp?: () => void;
   importing?: boolean;
+  onBulkDelete?: (ids: string[]) => Promise<void>;
 }
 
 export function LeadList({
@@ -30,7 +32,36 @@ export function LeadList({
   onAddLead,
   onImportWhatsapp,
   importing,
+  onBulkDelete,
 }: LeadListProps) {
+  // Multi-select mode for bulk deleting contacts.
+  const [selecting, setSelecting] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [deleting, setDeleting] = useState(false);
+
+  const toggle = (id: string) =>
+    setSelected((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+
+  const exitSelect = () => { setSelecting(false); setSelected(new Set()); };
+
+  const allVisibleSelected = leads.length > 0 && leads.every((l) => selected.has(l.id));
+  const toggleAll = () =>
+    setSelected((prev) => (allVisibleSelected ? new Set() : new Set(leads.map((l) => l.id))));
+
+  const doDelete = async () => {
+    if (!onBulkDelete || selected.size === 0 || deleting) return;
+    setDeleting(true);
+    try {
+      await onBulkDelete([...selected]);
+      exitSelect();
+    } finally {
+      setDeleting(false);
+    }
+  };
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -46,6 +77,16 @@ export function LeadList({
             <span className="text-xs text-slate-400 bg-surface-subtle px-2 py-0.5 rounded-full">
               {leads.length}
             </span>
+            {onBulkDelete && leads.length > 0 && (
+              <button
+                onClick={() => (selecting ? exitSelect() : setSelecting(true))}
+                className={cn('w-7 h-7 flex items-center justify-center rounded-lg border transition',
+                  selecting ? 'bg-brand-600 border-brand-600 text-white' : 'border-surface-border text-slate-500 hover:bg-surface-subtle')}
+                title="בחירה מרובה"
+              >
+                <CheckSquare className="w-4 h-4" />
+              </button>
+            )}
             {onImportWhatsapp && (
               <button
                 onClick={onImportWhatsapp}
@@ -67,6 +108,26 @@ export function LeadList({
             )}
           </div>
         </div>
+
+        {/* Bulk-select action bar */}
+        {selecting && (
+          <div className="flex items-center gap-2 mb-3 bg-brand-50 border border-brand-200 rounded-lg px-2.5 py-1.5">
+            <button onClick={toggleAll} className="text-xs font-semibold text-brand-700 hover:underline whitespace-nowrap">
+              {allVisibleSelected ? 'נקה הכל' : 'בחר הכל'}
+            </button>
+            <span className="text-xs text-slate-500">נבחרו {selected.size}</span>
+            <div className="mr-auto flex items-center gap-1.5">
+              <button onClick={doDelete} disabled={selected.size === 0 || deleting}
+                className="flex items-center gap-1 text-xs font-semibold text-white bg-red-600 hover:bg-red-700 disabled:opacity-50 rounded-lg px-2.5 py-1.5">
+                {deleting ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Trash2 className="w-3.5 h-3.5" />}
+                מחק
+              </button>
+              <button onClick={exitSelect} aria-label="בטל" className="w-7 h-7 flex items-center justify-center rounded-lg text-slate-500 hover:bg-white">
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Search */}
         <div className="relative mb-3">
@@ -113,7 +174,9 @@ export function LeadList({
               key={lead.id}
               lead={lead}
               isSelected={lead.id === selectedId}
-              onClick={() => onSelect(lead.id)}
+              selecting={selecting}
+              checked={selected.has(lead.id)}
+              onClick={() => (selecting ? toggle(lead.id) : onSelect(lead.id))}
             />
           ))
         )}
@@ -125,10 +188,14 @@ export function LeadList({
 function LeadItem({
   lead,
   isSelected,
+  selecting,
+  checked,
   onClick,
 }: {
   lead: Lead;
   isSelected: boolean;
+  selecting?: boolean;
+  checked?: boolean;
   onClick: () => void;
 }) {
   const statusCfg = STATUS_CONFIG[lead.status as LeadStatus];
@@ -139,9 +206,17 @@ function LeadItem({
       onClick={onClick}
       className={cn(
         'w-full text-right px-4 py-3 flex items-start gap-3 transition-colors border-b border-surface-border/60 hover:bg-surface-subtle',
-        isSelected && 'bg-brand-50 border-r-2 border-r-brand-600 hover:bg-brand-50'
+        isSelected && !selecting && 'bg-brand-50 border-r-2 border-r-brand-600 hover:bg-brand-50',
+        selecting && checked && 'bg-brand-50'
       )}
     >
+      {/* Selection checkbox */}
+      {selecting && (
+        <span className={cn('flex-shrink-0 w-5 h-5 mt-2.5 rounded border flex items-center justify-center transition',
+          checked ? 'bg-brand-600 border-brand-600 text-white' : 'border-slate-300 bg-white')}>
+          {checked && <CheckSquare className="w-3.5 h-3.5" />}
+        </span>
+      )}
       {/* Avatar */}
       <div className="flex-shrink-0 w-10 h-10 rounded-full bg-gradient-to-br from-brand-400 to-brand-700 flex items-center justify-center text-white font-semibold text-sm">
         {lead.name.charAt(0)}

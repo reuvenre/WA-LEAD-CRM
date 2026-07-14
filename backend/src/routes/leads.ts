@@ -305,6 +305,26 @@ leadsRouter.post('/import', async (req: Request, res: Response) => {
   }
 });
 
+// ─── POST /leads/bulk-delete ─────────────────────────────────────────────────
+// Delete many leads at once. Scoped: an agent can only delete their own leads
+// (leadScope), a manager any in the tenant. Messages/activities cascade.
+leadsRouter.post('/bulk-delete', async (req: Request, res: Response) => {
+  try {
+    const tenantId = req.user!.tenantId;
+    const { ids } = req.body as { ids?: string[] };
+    if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'לא נבחרו אנשי קשר' });
+    if (ids.length > 500) return res.status(400).json({ error: 'ניתן למחוק עד 500 בבת אחת' });
+
+    const result = await prisma.lead.deleteMany({
+      where: { id: { in: ids }, tenantId, ...leadScope(req) },
+    });
+    return res.json({ deleted: result.count });
+  } catch (error) {
+    console.error('POST /leads/bulk-delete error:', error);
+    return res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
 // ─── DELETE /leads/:id ───────────────────────────────────────────────────────
 leadsRouter.delete('/:id', async (req: Request, res: Response) => {
   try {

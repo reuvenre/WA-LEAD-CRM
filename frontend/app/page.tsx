@@ -14,6 +14,7 @@ import { AddLeadModal } from '@/components/AddLeadModal';
 import { SettingsModal } from '@/components/SettingsModal';
 import { SuperAdminPanel } from '@/components/SuperAdminPanel';
 import { AppSidebar } from '@/components/AppSidebar';
+import { useConfirm } from '@/components/useConfirm';
 import { useAuth } from '@/hooks/useAuth';
 import { decodeToken } from '@/lib/auth';
 
@@ -52,6 +53,7 @@ export default function CRMPage() {
   const { ready, logout } = useAuth();
   const prefetchedDashboard = usePrefetchDashboard(ready);
   const currentUser = decodeToken();
+  const { confirm, dialog: confirmDialog } = useConfirm();
 
   // Mobile: the navy sidebar becomes a slide-in drawer (desktop is unchanged).
   const [mobileNav, setMobileNav] = useState(false);
@@ -228,9 +230,20 @@ export default function CRMPage() {
     setViewMode('chat');
   };
 
-  // Bulk-import the WhatsApp contact list as leads (manager action).
+  // Bulk-import the WhatsApp contact list as leads (manager action). First shows the
+  // connected number so the user knows exactly which WhatsApp account is being pulled.
   const handleImportWhatsapp = async () => {
     if (importingContacts) return;
+    let account: { connected: boolean; phone: string | null; state: string | null } | null = null;
+    try { account = await api.waImport.account(); } catch { /* fall back to a generic prompt */ }
+
+    if (account && !account.connected) {
+      setToast('וואטסאפ לא מחובר — חברו את החשבון בהגדרות → Green API');
+      return;
+    }
+    const numberLine = account?.phone ? `מהמספר +${account.phone}` : 'מהוואטסאפ המחובר';
+    if (!(await confirm(`לייבא את כל אנשי הקשר ${numberLine} כלידים למערכת?`, { danger: false }))) return;
+
     setImportingContacts(true);
     try {
       const r = await api.waImport.contacts();
@@ -243,6 +256,21 @@ export default function CRMPage() {
       setToast(err instanceof Error ? err.message : 'ייבוא אנשי הקשר נכשל');
     } finally {
       setImportingContacts(false);
+    }
+  };
+
+  // Bulk-delete selected leads (contacts). Backend scopes to what the caller may delete.
+  const handleBulkDelete = async (ids: string[]) => {
+    if (ids.length === 0) return;
+    if (!(await confirm(`למחוק ${ids.length} אנשי קשר? הפעולה בלתי הפיכה ותמחק גם את היסטוריית ההודעות שלהם.`))) return;
+    try {
+      const { deleted } = await api.leads.bulkDelete(ids);
+      setLeads((prev) => prev.filter((l) => !ids.includes(l.id)));
+      if (selectedLeadId && ids.includes(selectedLeadId)) { setSelectedLeadId(null); setSelectedLead(null); setMessages([]); }
+      setToast(`נמחקו ${deleted} אנשי קשר`);
+    } catch (err) {
+      setToast(err instanceof Error ? err.message : 'המחיקה נכשלה');
+      loadLeads();
     }
   };
 
@@ -332,6 +360,7 @@ export default function CRMPage() {
                 : undefined
             }
             importing={importingContacts}
+            onBulkDelete={handleBulkDelete}
           />
         </aside>
       )}
@@ -419,6 +448,7 @@ export default function CRMPage() {
           {toast}
         </div>
       )}
+      {confirmDialog}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showSuperAdmin && <SuperAdminPanel onClose={() => setShowSuperAdmin(false)} />}
       {showAddLead && (

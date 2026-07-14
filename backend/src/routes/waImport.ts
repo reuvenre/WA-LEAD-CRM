@@ -27,6 +27,29 @@ async function tenantCreds(tenantId: string) {
   });
 }
 
+// ─── GET /wa-import/account ───────────────────────────────────────────────────
+// The connected WhatsApp number the import will pull from (so the UI can show it).
+waImportRouter.get('/account', async (req: Request, res: Response) => {
+  try {
+    if (!isManager(req)) return res.status(403).json({ error: 'רק מנהל יכול לצפות בחשבון' });
+    const tenant = await tenantCreds(req.user!.tenantId);
+    const creds = resolveCreds(null, tenant);
+    if (creds.provider !== 'GREEN_API' || !creds.greenApiInstanceId || !creds.greenApiToken) {
+      return res.json({ connected: false, phone: null, state: null });
+    }
+    const r = await fetch(
+      `https://api.green-api.com/waInstance${creds.greenApiInstanceId}/getWaSettings/${encodeURIComponent(creds.greenApiToken)}`,
+      { method: 'GET', signal: AbortSignal.timeout(8000) },
+    );
+    if (!r.ok) return res.json({ connected: false, phone: null, state: null });
+    const data = await r.json() as { phone?: string; stateInstance?: string };
+    const phone = data.phone ? String(data.phone).replace(/\D/g, '') : null;
+    return res.json({ connected: data.stateInstance === 'authorized', phone, state: data.stateInstance ?? null });
+  } catch {
+    return res.json({ connected: false, phone: null, state: null });
+  }
+});
+
 // ─── POST /wa-import/contacts ─────────────────────────────────────────────────
 // Pull the account's contact list and create a lead for each new one. Existing leads
 // (matched by phone) are left untouched. Stops at the plan's lead cap.

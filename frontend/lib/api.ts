@@ -86,6 +86,8 @@ export const api = {
       request<Lead>('/api/leads', { method: 'POST', body: JSON.stringify(data) }),
     import: (leads: Array<{ name: string; phone: string; status?: string; priority?: string; assignedTo?: string; tags?: string }>) =>
       request<{ created: number; skipped: number; errors: string[] }>('/api/leads/import', { method: 'POST', body: JSON.stringify({ leads }) }),
+    bulkDelete: (ids: string[]) =>
+      request<{ deleted: number }>('/api/leads/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
     update: (id: string, data: Partial<Pick<Lead, 'status' | 'priority' | 'internalNotes' | 'assignedTo' | 'tags' | 'name' | 'email' | 'company' | 'projectId' | 'meetingDate' | 'meetingNotes' | 'attributes'>>) =>
       request<Lead>(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     delete: (id: string) => request<void>(`/api/leads/${id}`, { method: 'DELETE' }),
@@ -122,6 +124,8 @@ export const api = {
     // Bulk-create a lead per WhatsApp contact (manager only). Returns import counts.
     contacts: () => request<{ created: number; skipped: number; total: number; capReached: boolean }>(
       '/api/wa-import/contacts', { method: 'POST' }),
+    // The connected WhatsApp number the import pulls from.
+    account: () => request<{ connected: boolean; phone: string | null; state: string | null }>('/api/wa-import/account'),
     // On-demand: load one chat's past messages into the given lead.
     history: (leadId: string, count?: number) => request<{ imported: number; skipped: number; total: number }>(
       `/api/wa-import/history/${leadId}`, { method: 'POST', body: JSON.stringify(count ? { count } : {}) }),
