@@ -35,7 +35,7 @@ tenantRouter.get('/settings', async (req: Request, res: Response) => {
     select: {
       id: true, name: true, email: true, plan: true, active: true,
       greenApiInstanceId: true, greenApiToken: true, greenApiWebhookUrl: true,
-      assignmentMode: true, autoReplies: true,
+      assignmentMode: true, autoReplies: true, slaTargetMinutes: true,
       createdAt: true,
     },
   });
@@ -57,8 +57,14 @@ tenantRouter.patch('/engagement', async (req: Request, res: Response) => {
     where: { id: req.user!.tenantId }, select: { plan: true },
   }))?.plan ?? 'TRIAL').features;
 
-  const { assignmentMode, autoReplies } = req.body as { assignmentMode?: string; autoReplies?: unknown };
+  const { assignmentMode, autoReplies, slaTargetMinutes } = req.body as { assignmentMode?: string; autoReplies?: unknown; slaTargetMinutes?: number };
   const data: Record<string, unknown> = {};
+
+  if (slaTargetMinutes !== undefined) {
+    const n = Math.round(Number(slaTargetMinutes));
+    if (!Number.isFinite(n) || n < 1 || n > 1440) return res.status(400).json({ error: 'יעד SLA חייב להיות בין 1 ל-1440 דקות' });
+    data.slaTargetMinutes = n;
+  }
 
   if (assignmentMode !== undefined) {
     const mode = assignmentMode === 'round_robin' ? 'round_robin' : 'manual';

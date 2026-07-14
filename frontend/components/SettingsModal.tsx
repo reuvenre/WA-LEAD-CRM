@@ -86,6 +86,7 @@ function EngagementSettings() {
   const [loading, setLoading] = useState(true);
   const [locked, setLocked] = useState(false);
   const [roundRobin, setRoundRobin] = useState(false);
+  const [slaTarget, setSlaTarget] = useState(30);
   const [cfg, setCfg] = useState<AutoRepliesConfig>(DEFAULT_AUTO);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -94,6 +95,7 @@ function EngagementSettings() {
     Promise.all([api.tenant.settings(), api.tenant.entitlements()])
       .then(([s, e]) => {
         setRoundRobin(s.assignmentMode === 'round_robin');
+        setSlaTarget(s.slaTargetMinutes ?? 30);
         // Merge stored config over defaults so newly-added sub-fields always exist.
         const stored = s.autoReplies ?? {};
         setCfg({
@@ -110,7 +112,7 @@ function EngagementSettings() {
   const save = async () => {
     setSaving(true); setMsg(null);
     try {
-      await api.tenant.updateEngagement({ assignmentMode: roundRobin ? 'round_robin' : 'manual', autoReplies: cfg });
+      await api.tenant.updateEngagement({ assignmentMode: roundRobin ? 'round_robin' : 'manual', autoReplies: cfg, slaTargetMinutes: slaTarget });
       setMsg({ ok: true, text: 'ההגדרות נשמרו ✓' });
     } catch (err) {
       setMsg({ ok: false, text: err instanceof Error ? err.message : 'השמירה נכשלה' });
@@ -143,6 +145,22 @@ function EngagementSettings() {
             <p className="text-xs text-slate-500 mt-0.5">שיחות חדשות יחולקו בסבב בין הנציגים הפעילים.</p>
           </div>
           <ToggleBtn on={roundRobin} onClick={() => setRoundRobin((v) => !v)} />
+        </div>
+      </section>
+
+      <div className="h-px bg-surface-border" />
+
+      {/* SLA target */}
+      <section className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-bold text-slate-800">יעד זמן מענה (SLA)</h3>
+          <p className="text-xs text-slate-500 mt-0.5">לחישוב אחוז העמידה ביעד בדשבורד.</p>
+        </div>
+        <div className="flex items-center gap-2 text-xs text-slate-600">
+          <input type="number" min={1} max={1440} value={slaTarget}
+            onChange={(e) => setSlaTarget(Math.max(1, Number(e.target.value) || 1))}
+            className="w-16 px-2 py-1 rounded-lg border border-surface-border bg-surface-muted" dir="ltr" />
+          <span>דקות</span>
         </div>
       </section>
 

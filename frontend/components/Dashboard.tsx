@@ -69,7 +69,7 @@ export function Dashboard({ onClose, prefetchedData }: DashboardProps) {
             <KpiCard label="עסקאות סגורות" value={data.totals.closed} icon={<CheckCircle className="w-5 h-5" />} color="green" />
           </div>
 
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             <KpiCard label="הודעות היום" value={data.messages.today} icon={<MessageCircle className="w-5 h-5" />} color="blue" small />
             <KpiCard label="הודעות השבוע" value={data.messages.thisWeek} icon={<MessageCircle className="w-5 h-5" />} color="blue" small />
             <KpiCard
@@ -77,6 +77,13 @@ export function Dashboard({ onClose, prefetchedData }: DashboardProps) {
               value={data.avgResponseMinutes != null ? `${data.avgResponseMinutes} דק'` : 'N/A'}
               icon={<Clock className="w-5 h-5" />}
               color="amber"
+              small
+            />
+            <KpiCard
+              label={`עמידה ב-SLA (${data.slaTargetMinutes} ד')`}
+              value={data.slaCompliance != null ? `${data.slaCompliance}%` : 'N/A'}
+              icon={<CheckCircle className="w-5 h-5" />}
+              color={data.slaCompliance == null ? 'blue' : data.slaCompliance >= 80 ? 'green' : data.slaCompliance >= 50 ? 'amber' : 'red'}
               small
             />
           </div>
@@ -105,7 +112,21 @@ export function Dashboard({ onClose, prefetchedData }: DashboardProps) {
                             </span>
                             {agent.name}
                           </span>
-                          <span className="text-xs font-semibold text-brand-600">{agent.leads} לידים</span>
+                          <span className="flex items-center gap-2">
+                            {agent.avgResponseMinutes != null && (
+                              <span className="text-[10px] text-slate-400 flex items-center gap-0.5" title="זמן מענה ממוצע">
+                                <Clock className="w-3 h-3" />{agent.avgResponseMinutes}ד'
+                              </span>
+                            )}
+                            {agent.slaCompliance != null && (
+                              <span className={cn('text-[10px] font-semibold px-1.5 py-0.5 rounded-full',
+                                agent.slaCompliance >= 80 ? 'bg-green-50 text-green-600' : agent.slaCompliance >= 50 ? 'bg-amber-50 text-amber-600' : 'bg-red-50 text-red-500')}
+                                title="עמידה ביעד ה-SLA">
+                                {agent.slaCompliance}%
+                              </span>
+                            )}
+                            <span className="text-xs font-semibold text-brand-600">{agent.leads} לידים</span>
+                          </span>
                         </div>
                         <div className="h-1.5 bg-surface-subtle rounded-full overflow-hidden">
                           <div className="h-full bg-brand-400 rounded-full" style={{ width: `${pct}%` }} />

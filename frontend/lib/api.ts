@@ -196,9 +196,9 @@ export const api = {
       id: string; name: string; email: string; plan: string;
       greenApiInstanceId: string | null; greenApiTokenSet: boolean;
       greenApiWebhookUrl: string | null;
-      assignmentMode: string; autoReplies: AutoRepliesConfig | null;
+      assignmentMode: string; autoReplies: AutoRepliesConfig | null; slaTargetMinutes: number;
     }>('/api/tenant/settings'),
-    updateEngagement: (data: { assignmentMode?: string; autoReplies?: AutoRepliesConfig | null }) =>
+    updateEngagement: (data: { assignmentMode?: string; autoReplies?: AutoRepliesConfig | null; slaTargetMinutes?: number }) =>
       request<{ success: boolean }>('/api/tenant/engagement', { method: 'PATCH', body: JSON.stringify(data) }),
     entitlements: () => request<{
       plan: string;

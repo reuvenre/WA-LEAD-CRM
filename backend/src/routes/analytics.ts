@@ -24,9 +24,39 @@ analyticsRouter.get('/overview', async (req: Request, res: Response) => {
     const weekStart = new Date(todayStart);
     weekStart.setDate(weekStart.getDate() - 7);
 
+    // SLA target (minutes) for first-response compliance.
+    const tenantRow = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { slaTargetMinutes: true } });
+    const slaTarget = tenantRow?.slaTargetMinutes ?? 30;
+
+    // Per-agent FIRST-response time + SLA compliance over the week. For each inbound
+    // message we take the first outbound that follows it on the same lead (LATERAL),
+    // attribute it to the lead's assigned agent, and aggregate. Scoped by leadSql so an
+    // agent viewing their own dashboard only sees their own row.
+    const responseByAgent = prisma.$queryRaw<Array<{ agent: string; avg_minutes: number; sample: number; within_sla: number }>>(Prisma.sql`
+      SELECT l."assignedTo" AS agent,
+             AVG(fr.gap_min) AS avg_minutes,
+             COUNT(*)::int AS sample,
+             SUM(CASE WHEN fr.gap_min <= ${slaTarget} THEN 1 ELSE 0 END)::int AS within_sla
+      FROM "Lead" l
+      JOIN LATERAL (
+        SELECT EXTRACT(EPOCH FROM (o.ts - i.timestamp)) / 60 AS gap_min
+        FROM "Message" i
+        JOIN LATERAL (
+          SELECT o.timestamp AS ts FROM "Message" o
+          WHERE o."leadId" = i."leadId" AND o.direction = 'outbound' AND o.timestamp > i.timestamp
+          ORDER BY o.timestamp ASC LIMIT 1
+        ) o ON true
+        WHERE i."leadId" = l.id AND i.direction = 'inbound' AND i.timestamp >= ${weekStart}
+      ) fr ON true
+      WHERE l."tenantId" = ${tenantId} AND l."assignedTo" IS NOT NULL
+        ${leadSql}
+      GROUP BY l."assignedTo"
+    `);
+
     const [
       totalLeads, newToday, hotLeads, closedLeads, lostLeads, inProgressLeads,
       messagesToday, messagesThisWeek, avgResponseTime, leadsByStatus, leadsThisWeek, agentLeads, projectsData,
+      agentResponse,
     ] = await Promise.all([
       prisma.lead.count({ where: { tenantId, ...leadScope } }),
       prisma.lead.count({ where: { tenantId, ...leadScope, createdAt: { gte: todayStart } } }),
@@ -73,7 +103,14 @@ analyticsRouter.get('/overview', async (req: Request, res: Response) => {
             select: { id: true, name: true, color: true, _count: { select: { leads: true } } },
             orderBy: { createdAt: 'asc' },
           }),
+      responseByAgent,
     ]);
+
+    // Index per-agent response metrics for quick lookup + a scoped overall compliance.
+    const respByAgent = new Map(agentResponse.map((r) => [r.agent, r]));
+    let slaSample = 0, slaWithin = 0;
+    for (const r of agentResponse) { slaSample += Number(r.sample); slaWithin += Number(r.within_sla); }
+    const slaCompliance = slaSample > 0 ? Math.round((slaWithin / slaSample) * 100) : null;
 
     const avgMinutes = avgResponseTime[0]?.avg_minutes
       ? Math.round(Number(avgResponseTime[0].avg_minutes))
@@ -84,9 +121,21 @@ analyticsRouter.get('/overview', async (req: Request, res: Response) => {
       totals: { leads: totalLeads, newToday, hot: hotLeads, closed: closedLeads, lost: lostLeads, inProgress: inProgressLeads },
       messages: { today: messagesToday, thisWeek: messagesThisWeek },
       avgResponseMinutes: avgMinutes,
+      slaTargetMinutes: slaTarget,
+      slaCompliance,
       leadsByStatus: leadsByStatus.map((s) => ({ status: s.status, count: s._count.status })),
       leadsThisWeek,
-      agents: agentLeads.map((a) => ({ name: a.assignedTo!, leads: a._count.id })),
+      // Leaderboard enriched with each agent's first-response avg + SLA compliance %.
+      agents: agentLeads.map((a) => {
+        const r = a.assignedTo ? respByAgent.get(a.assignedTo) : undefined;
+        const sample = r ? Number(r.sample) : 0;
+        return {
+          name: a.assignedTo!,
+          leads: a._count.id,
+          avgResponseMinutes: r && r.avg_minutes != null ? Math.round(Number(r.avg_minutes)) : null,
+          slaCompliance: sample > 0 ? Math.round((Number(r!.within_sla) / sample) * 100) : null,
+        };
+      }),
       projects: projectsData.map((p) => ({ id: p.id, name: p.name, color: p.color, leads: p._count.leads })),
     });
   } catch (error) {

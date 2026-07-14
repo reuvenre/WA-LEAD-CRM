@@ -89,6 +89,8 @@ model Tenant {
   assignmentPointer  Int     @default(0)
   // Auto-reply config: { greeting, offHours, away } — see lib/autoReply.ts.
   autoReplies        Json?
+  // First-response SLA target in minutes (for analytics compliance %).
+  slaTargetMinutes   Int     @default(30)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 

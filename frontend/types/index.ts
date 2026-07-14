@@ -83,9 +83,11 @@ export interface AnalyticsOverview {
     thisWeek: number;
   };
   avgResponseMinutes: number | null;
+  slaTargetMinutes: number;
+  slaCompliance: number | null;
   leadsByStatus: Array<{ status: string; count: number }>;
   leadsThisWeek: Array<{ day: string; count: number }>;
-  agents: Array<{ name: string; leads: number }>;
+  agents: Array<{ name: string; leads: number; avgResponseMinutes: number | null; slaCompliance: number | null }>;
   projects: Array<{ id: string; name: string; color: string; leads: number }>;
 }
 
