@@ -63,12 +63,12 @@ export function AppSidebar({
 
   return (
     <Sidebar
-      brandLabel="Real Estate Lead"
-      brandSubLabel="CRM · ניהול נדל״ן"
+      brandLabel="Real Estate Lead CRM"
+      brandSubLabel="מבית WIN SOLUTIONS"
       logo={
         // The building mark (not the full badge) — the wordmark is illegible at 32px.
         // White tile keeps the dark linework readable on the navy rail.
-        <span className="w-8 h-8 rounded-md bg-white flex items-center justify-center flex-shrink-0 overflow-hidden p-1">
+        <span className="w-10 h-10 rounded-lg bg-white flex items-center justify-center flex-shrink-0 overflow-hidden p-1">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/mark.png" alt="Real Estate Lead CRM" className="w-full h-full object-contain" />
         </span>

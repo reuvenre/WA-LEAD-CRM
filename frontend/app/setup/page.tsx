@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { ShieldCheck, User, Lock, Eye, EyeOff, Copy, AlertCircle, CheckCircle, Check } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, Copy, AlertCircle, CheckCircle, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -86,11 +86,13 @@ export default function SetupPage() {
       <div className="w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur flex items-center justify-center mx-auto mb-4 border border-white/20">
-            <ShieldCheck className="w-8 h-8 text-white" />
+          <div className="w-24 h-24 rounded-2xl bg-white flex items-center justify-center mx-auto mb-4 border border-white/20 shadow-lg overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/mark.png" alt="Real Estate Lead CRM" className="w-full h-full object-contain p-3.5" />
           </div>
-          <h1 className="text-2xl font-bold text-white">Real Estate Lead CRM</h1>
-          <p className="text-brand-200 text-sm mt-1">מבית Win Solutions · הגדרה ראשונית</p>
+          <h1 className="text-3xl font-bold text-white">Real Estate Lead CRM</h1>
+          <p className="text-white/90 text-sm font-semibold tracking-wide mt-1.5">מבית WIN SOLUTIONS</p>
+          <p className="text-brand-200 text-sm mt-1">הגדרה ראשונית</p>
         </div>
 
         <div className="bg-white rounded-2xl shadow-2xl p-6 space-y-5">

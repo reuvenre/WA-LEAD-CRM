@@ -212,18 +212,19 @@ export default function LoginPage() {
       <div className="relative z-10 w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center mx-auto mb-4 border border-white/20 shadow-lg overflow-hidden">
+          <div className="w-24 h-24 rounded-2xl bg-white flex items-center justify-center mx-auto mb-4 border border-white/20 shadow-lg overflow-hidden">
             {step === '2fa'
-              ? <ShieldCheck className="w-8 h-8 text-brand-600" />
-              // The mark alone — the full badge's wordmark would be unreadable at 64px,
-              // and the product name is already spelled out in the h1 below.
+              ? <ShieldCheck className="w-12 h-12 text-brand-600" />
+              // The mark alone — the full badge's wordmark would be unreadable at this
+              // size, and the product name is already spelled out in the h1 below.
               // eslint-disable-next-line @next/next/no-img-element
-              : <img src="/mark.png" alt="Real Estate Lead CRM" className="w-full h-full object-contain p-2.5" />}
+              : <img src="/mark.png" alt="Real Estate Lead CRM" className="w-full h-full object-contain p-3.5" />}
           </div>
-          <h1 className="text-2xl font-bold text-white">Real Estate Lead CRM</h1>
-          <p className="text-brand-200 text-sm mt-1">
-            {step === '2fa' ? 'אימות דו-שלבי' : step === 'forgot' ? 'שחזור סיסמה' : 'מבית Win Solutions'}
-          </p>
+          <h1 className="text-3xl font-bold text-white">Real Estate Lead CRM</h1>
+          <p className="text-white/90 text-sm font-semibold tracking-wide mt-1.5">מבית WIN SOLUTIONS</p>
+          {(step === '2fa' || step === 'forgot') && (
+            <p className="text-brand-200 text-sm mt-1">{step === '2fa' ? 'אימות דו-שלבי' : 'שחזור סיסמה'}</p>
+          )}
         </div>
 
         <div className="bg-white rounded-2xl shadow-2xl p-6 space-y-5">

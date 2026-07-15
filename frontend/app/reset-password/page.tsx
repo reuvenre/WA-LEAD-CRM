@@ -2,7 +2,7 @@
 
 import { useState, useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Lock, Eye, EyeOff, MessageSquare, AlertCircle, CheckCircle, Check } from 'lucide-react';
+import { Lock, Eye, EyeOff, AlertCircle, CheckCircle, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LoginBackground } from '@/components/LoginBackground';
 
@@ -78,10 +78,12 @@ function ResetPasswordContent() {
       <div className="relative z-10 w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur flex items-center justify-center mx-auto mb-4 border border-white/20">
-            <MessageSquare className="w-8 h-8 text-white" />
+          <div className="w-24 h-24 rounded-2xl bg-white flex items-center justify-center mx-auto mb-4 border border-white/20 shadow-lg overflow-hidden">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/mark.png" alt="Real Estate Lead CRM" className="w-full h-full object-contain p-3.5" />
           </div>
-          <h1 className="text-2xl font-bold text-white">Real Estate Lead CRM</h1>
+          <h1 className="text-3xl font-bold text-white">Real Estate Lead CRM</h1>
+          <p className="text-white/90 text-sm font-semibold tracking-wide mt-1.5">מבית WIN SOLUTIONS</p>
           <p className="text-brand-200 text-sm mt-1">איפוס סיסמה</p>
         </div>
 

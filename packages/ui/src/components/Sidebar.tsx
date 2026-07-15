@@ -48,9 +48,9 @@ export function Sidebar({
             {logoText}
           </div>
         )}
-        <div className="leading-tight">
-          <div className="text-white font-bold text-sm">{brandLabel}</div>
-          {brandSubLabel && <div className="text-brand-400 text-[11px]">{brandSubLabel}</div>}
+        <div className="leading-tight min-w-0">
+          <div className="text-white font-bold text-[15px]">{brandLabel}</div>
+          {brandSubLabel && <div className="text-brand-400 text-[11px] mt-0.5">{brandSubLabel}</div>}
         </div>
       </div>
 
