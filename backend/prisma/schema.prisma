@@ -107,6 +107,7 @@ model Tenant {
   templates    Template[]
   automations  AutomationWebhook[]
   jobs         Job[]
+  campaigns    Campaign[]
   // Real-estate domain (added in phase-2 integration)
   deals        Deal[]
   properties   Property[]
@@ -209,6 +210,11 @@ model Lead {
   lastAutoReplyAt DateTime?
   // Values for the tenant's custom attribute definitions: { [key]: string | number }.
   attributes    Json?
+  // Marketing opt-out: excluded from broadcasts/drips (1:1 chat is never blocked).
+  optedOut      Boolean    @default(false)
+  // CSAT survey: score 1–5 and when we asked (to match a reply within a window).
+  csatScore     Int?
+  csatAskedAt   DateTime?
   // Google Calendar event mirror (one-way sync)
   googleEventId       String?
   googleCalendarUserId String?
@@ -278,6 +284,41 @@ model Line {
 
   @@index([tenantId])
   @@index([assignedUserId])
+}
+
+// A marketing campaign: a one-shot broadcast (body) or a drip sequence (steps).
+model Campaign {
+  id          String   @id @default(cuid())
+  tenantId    String
+  tenant      Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  name        String
+  body        String   @default("")            // one-shot broadcast text
+  filter      Json?                             // audience selector { status?, tags?, projectId?, channel? }
+  steps       Json?                             // drip: [{ afterHours, body }]
+  status      String   @default("draft")        // draft | scheduled | running | paused | done
+  scheduledAt DateTime?
+  createdBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  recipients  CampaignRecipient[]
+
+  @@index([tenantId])
+}
+
+model CampaignRecipient {
+  id         String   @id @default(cuid())
+  campaignId String
+  campaign   Campaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  leadId     String
+  status     String   @default("pending")       // pending | sent | delivered | read | failed | skipped
+  messageId  String?                             // provider idMessage → status webhook updates
+  error      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([campaignId, leadId])
+  @@index([campaignId])
+  @@index([messageId])
 }
 
 model Message {

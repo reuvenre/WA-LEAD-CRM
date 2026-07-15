@@ -27,8 +27,9 @@ import Properties from '@/components/realestate/Properties';
 import ProjectsRE from '@/components/realestate/ProjectsRE';
 import Listings from '@/components/realestate/Listings';
 import REClients from '@/components/realestate/REClients';
+import Campaigns from '@/components/Campaigns';
 
-type ViewMode = 'chat' | 'kanban' | 'dashboard' | 'projects' | 'calendar' | 'deals' | 'properties' | 're_projects' | 'listings' | 'clients';
+type ViewMode = 'chat' | 'kanban' | 'dashboard' | 'projects' | 'calendar' | 'deals' | 'properties' | 're_projects' | 'listings' | 'clients' | 'campaigns';
 
 export default function CRMPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -397,6 +398,8 @@ export default function CRMPage() {
           )
         ) : viewMode === 'clients' ? (
           <div className="flex-1 overflow-y-auto bg-surface-muted"><REClients /></div>
+        ) : viewMode === 'campaigns' ? (
+          <Campaigns />
         ) : viewMode === 'dashboard' ? (
           <Dashboard onClose={() => setViewMode('chat')} prefetchedData={prefetchedDashboard} />
         ) : viewMode === 'calendar' ? (

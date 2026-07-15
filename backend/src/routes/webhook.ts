@@ -8,6 +8,7 @@ import { pickRoundRobinAssignee } from '../lib/assignment';
 import { handleInboundAutoReply } from '../lib/autoReply';
 import { triggerAutomations } from '../lib/automations';
 import { notifyLeadEvent } from '../lib/push';
+import { classifyOptMessage, handleOptChange } from '../lib/optOut';
 
 export const webhookRouter = Router();
 
@@ -42,6 +43,9 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
         const io: SocketIOServer = req.app.get('io');
         emitScoped(io, tenantId, msg.lead?.assignedTo, SOCKET_EVENTS.MESSAGE_STATUS, { id: updated.id, leadId: updated.leadId, status: updated.status });
       }
+      // Reflect delivery/read into any campaign recipient sent with this provider id,
+      // so the campaign results screen shows delivered/read counts.
+      await prisma.campaignRecipient.updateMany({ where: { messageId: idMessage }, data: { status: newStatus } }).catch(() => {});
     }
     return res.status(200).json({ received: true });
   }
@@ -154,7 +158,10 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
   // Post-ingest hooks (inbound only). Fire-and-forget so a slow/failed hook never
   // delays the webhook 200 (Green API retries on non-2xx).
   if (isIncoming) {
-    void handleInboundAutoReply({ tenantId, lead, isNewLead: !existingLead });
+    // "הסר"/"הצטרף" is a list command → handle it and skip the normal auto-reply.
+    const optKind = classifyOptMessage(content);
+    if (optKind) void handleOptChange(tenantId, lead.id, optKind);
+    else void handleInboundAutoReply({ tenantId, lead, isNewLead: !existingLead });
     // The 'lead.message_received' automation event was declared but never fired until now.
     void triggerAutomations('lead.message_received', { lead, message }, tenantId);
     // Push notification to the managers + assigned agent (mirrors emitScoped).

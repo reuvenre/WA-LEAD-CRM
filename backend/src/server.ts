@@ -19,6 +19,7 @@ import { googleRouter } from './routes/google';
 import { waImportRouter } from './routes/waImport';
 import { widgetRouter } from './routes/widget';
 import { pushRouter } from './routes/push';
+import { campaignsRouter } from './routes/campaigns';
 import { WIDGET_JS } from './lib/widgetScript';
 import { startJobRunner, stopJobRunner } from './lib/jobs';
 import { requireAuth } from './middleware/auth';
@@ -115,6 +116,7 @@ app.use('/api/wa-import', requireAuth, waImportRouter);   // pull existing Whats
 app.use('/api/push', requireAuth, pushRouter);            // web-push subscriptions
 app.use('/api/templates', requireAuth, templatesRouter);
 app.use('/api/analytics', requireAuth, requireFeature('analytics'), analyticsRouter);
+app.use('/api/campaigns', requireAuth, requireFeature('broadcast'), campaignsRouter);
 app.use('/api/automations', requireAuth, requireFeature('automations'), automationsRouter);
 app.use('/api/projects', requireAuth, projectsRouter);
 app.use('/api/realestate', requireAuth, realestateRouter);

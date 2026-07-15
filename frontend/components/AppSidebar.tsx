@@ -3,14 +3,14 @@
 import {
   LayoutDashboard, Building2, Home, Building, KeyRound, GitBranch,
   CalendarDays, MessageSquare, FolderKanban, Settings as SettingsIcon,
-  Shield, LogOut, Users,
+  Shield, LogOut, Users, Megaphone,
 } from 'lucide-react';
 import { Sidebar } from '@wa-lead/ui';
 import { ROLE_LABELS } from '@/lib/auth';
 
 export type ViewMode =
   | 'chat' | 'kanban' | 'dashboard' | 'projects' | 'calendar'
-  | 'deals' | 'properties' | 're_projects' | 'listings' | 'clients';
+  | 'deals' | 'properties' | 're_projects' | 'listings' | 'clients' | 'campaigns';
 
 // Both the CRM world (chat/pipeline/leads) and the real-estate world
 // (deals/properties/projects/listings) in one nav.
@@ -24,6 +24,7 @@ const NAV: { view: ViewMode; label: string; icon: typeof LayoutDashboard }[] = [
   { view: 'kanban',      label: 'פייפליין',     icon: GitBranch },
   { view: 'calendar',    label: 'יומן פגישות',  icon: CalendarDays },
   { view: 'chat',        label: 'WhatsApp',      icon: MessageSquare },
+  { view: 'campaigns',   label: 'קמפיינים',     icon: Megaphone },
   { view: 'projects',    label: 'לוחות לידים',  icon: FolderKanban },
 ];
 
@@ -45,9 +46,12 @@ export function AppSidebar({
   const roleLabel = role ? ROLE_LABELS[role] ?? role : '';
   // Paid-upgrade modules are hidden until the plan includes them. `listings` (דירות
   // יד שניה) is off for all tiers today — a future upsell.
-  const gated: Partial<Record<ViewMode, string>> = { listings: 'listings' };
+  const gated: Partial<Record<ViewMode, string>> = { listings: 'listings', campaigns: 'broadcast' };
+  // Manager-only nav items (agents get a 403 from the backend anyway).
+  const managerOnly: ViewMode[] = ['campaigns'];
   const items = NAV
     .filter(({ view }) => {
+      if (managerOnly.includes(view) && role === 'AGENT') return false;
       const feat = gated[view];
       return !feat || (features ? Boolean(features[feat]) : false);
     })

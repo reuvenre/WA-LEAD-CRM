@@ -110,7 +110,7 @@ leadsRouter.get('/:id', async (req: Request, res: Response) => {
 leadsRouter.patch('/:id', async (req: Request, res: Response) => {
   try {
     const tenantId = req.user!.tenantId;
-    const { name, email, company, status, priority, internalNotes, assignedTo, tags, projectId, meetingDate, meetingNotes, attributes } = req.body;
+    const { name, email, company, status, priority, internalNotes, assignedTo, tags, projectId, meetingDate, meetingNotes, attributes, optedOut } = req.body;
 
     const current = await prisma.lead.findFirst({ where: { id: req.params.id, tenantId } });
     if (!current || !canAccessLead(req, current.assignedTo)) return res.status(404).json({ error: 'Lead not found' });
@@ -148,6 +148,7 @@ leadsRouter.patch('/:id', async (req: Request, res: Response) => {
     }
     if (meetingDate !== undefined) updateData.meetingDate = meetingDate ? new Date(meetingDate) : null;
     if (meetingNotes !== undefined) updateData.meetingNotes = meetingNotes;
+    if (optedOut !== undefined) updateData.optedOut = Boolean(optedOut);
     if (attributes !== undefined) {
       // Only accept values for the tenant's defined custom fields (coerced by type).
       const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { attributeDefs: true } });

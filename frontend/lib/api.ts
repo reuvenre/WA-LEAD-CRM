@@ -1,4 +1,4 @@
-import type { Lead, Message, Template, Project, LeadsResponse, AnalyticsOverview, AttributeDef } from '@/types';
+import type { Lead, Message, Template, Project, LeadsResponse, AnalyticsOverview, AttributeDef, Campaign, CampaignFilter } from '@/types';
 
 // ─── Real-estate DB row shapes (camelCase from the backend) ───────────────────
 export interface DealRow { id: string; projectName: string; blockParcel: string | null; city: string | null; status: string; gdv: number; expectedMargin: number; riskAlert: boolean }
@@ -88,7 +88,7 @@ export const api = {
       request<{ created: number; skipped: number; errors: string[] }>('/api/leads/import', { method: 'POST', body: JSON.stringify({ leads }) }),
     bulkDelete: (ids: string[]) =>
       request<{ deleted: number }>('/api/leads/bulk-delete', { method: 'POST', body: JSON.stringify({ ids }) }),
-    update: (id: string, data: Partial<Pick<Lead, 'status' | 'priority' | 'internalNotes' | 'assignedTo' | 'tags' | 'name' | 'email' | 'company' | 'projectId' | 'meetingDate' | 'meetingNotes' | 'attributes'>>) =>
+    update: (id: string, data: Partial<Pick<Lead, 'status' | 'priority' | 'internalNotes' | 'assignedTo' | 'tags' | 'name' | 'email' | 'company' | 'projectId' | 'meetingDate' | 'meetingNotes' | 'attributes' | 'optedOut'>>) =>
       request<Lead>(`/api/leads/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     delete: (id: string) => request<void>(`/api/leads/${id}`, { method: 'DELETE' }),
     calendar: (month: string) => request<Array<{
@@ -140,6 +140,20 @@ export const api = {
 
   analytics: {
     overview: () => request<AnalyticsOverview>('/api/analytics/overview'),
+  },
+
+  campaigns: {
+    list: () => request<Campaign[]>('/api/campaigns'),
+    get: (id: string) => request<Campaign>(`/api/campaigns/${id}`),
+    create: (data: { name: string; body?: string; filter?: CampaignFilter; scheduledAt?: string | null }) =>
+      request<Campaign>('/api/campaigns', { method: 'POST', body: JSON.stringify(data) }),
+    update: (id: string, data: { name?: string; body?: string; filter?: CampaignFilter; scheduledAt?: string | null }) =>
+      request<Campaign>(`/api/campaigns/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
+    preview: (id: string) => request<{ count: number; sample: Array<{ name: string; phone: string | null }> }>(`/api/campaigns/${id}/preview`, { method: 'POST' }),
+    send: (id: string) => request<{ success: boolean; audience: number }>(`/api/campaigns/${id}/send`, { method: 'POST' }),
+    pause: (id: string) => request<{ success: boolean }>(`/api/campaigns/${id}/pause`, { method: 'POST' }),
+    resume: (id: string) => request<{ success: boolean }>(`/api/campaigns/${id}/resume`, { method: 'POST' }),
+    remove: (id: string) => request<void>(`/api/campaigns/${id}`, { method: 'DELETE' }),
   },
 
   automations: {

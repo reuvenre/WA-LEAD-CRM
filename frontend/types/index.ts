@@ -35,6 +35,8 @@ export interface Lead {
   meetingDate: string | null;
   meetingNotes: string | null;
   attributes?: Record<string, string | number> | null;
+  optedOut?: boolean;
+  csatScore?: number | null;
   createdAt: string;
   updatedAt: string;
   messages?: Message[];
@@ -103,4 +105,21 @@ export interface LeadsResponse {
   leads: Lead[];
   total: number;
   page: number;
+}
+
+export interface CampaignStats {
+  pending: number; sent: number; delivered: number; read: number; failed: number; skipped: number; total: number;
+}
+export interface CampaignFilter { status?: string; tags?: string[]; projectId?: string; channel?: string }
+export interface Campaign {
+  id: string;
+  name: string;
+  body: string;
+  filter: CampaignFilter | null;
+  steps?: Array<{ afterHours: number; body: string }> | null;
+  status: 'draft' | 'scheduled' | 'running' | 'paused' | 'done';
+  scheduledAt: string | null;
+  createdBy: string | null;
+  createdAt: string;
+  stats: CampaignStats;
 }

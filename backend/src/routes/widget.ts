@@ -12,6 +12,7 @@ import { logActivity } from '../lib/activity';
 import { pickRoundRobinAssignee } from '../lib/assignment';
 import { handleInboundAutoReply } from '../lib/autoReply';
 import { notifyLeadEvent } from '../lib/push';
+import { classifyOptMessage, handleOptChange } from '../lib/optOut';
 
 export const widgetRouter = Router();
 
@@ -134,8 +135,10 @@ widgetRouter.post('/message', async (req: Request, res: Response) => {
       emitScoped(io, tenant.id, lead.assignedTo, SOCKET_EVENTS.LEAD_UPDATED, { ...lead, lastMessageAt: new Date() });
     }
 
-    // Auto-replies (greeting on the first inbound / off-hours / away) run for webchat too.
-    void handleInboundAutoReply({ tenantId: tenant.id, lead: { id: lead.id, lastAutoReplyAt: lead.lastAutoReplyAt, channel: 'WEBCHAT' }, isNewLead: priorCount === 0 });
+    // Opt-out command → handle + skip the normal auto-reply; otherwise run auto-replies.
+    const optKind = classifyOptMessage(content);
+    if (optKind) void handleOptChange(tenant.id, lead.id, optKind);
+    else void handleInboundAutoReply({ tenantId: tenant.id, lead: { id: lead.id, lastAutoReplyAt: lead.lastAutoReplyAt, channel: 'WEBCHAT' }, isNewLead: priorCount === 0 });
     void notifyLeadEvent(tenant.id, lead.assignedTo, { title: `${lead.name} (אתר)`, body: content, leadId: lead.id });
 
     return res.json({ ok: true, message: mapMsg(message) });

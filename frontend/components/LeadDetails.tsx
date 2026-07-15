@@ -139,6 +139,16 @@ export function LeadDetails({ lead, onUpdate, onDelete }: LeadDetailsProps) {
                 <InfoRow icon={<Calendar className="w-3.5 h-3.5" />} label="נוצר">
                   <span className="text-slate-600">{new Date(lead.createdAt).toLocaleDateString('he-IL')}</span>
                 </InfoRow>
+                <InfoRow icon={<UserCheck className="w-3.5 h-3.5" />} label="רשימת תפוצה">
+                  <button
+                    onClick={() => onUpdate({ optedOut: !lead.optedOut } as Partial<Lead>)}
+                    className={cn('text-[11px] font-semibold px-2 py-0.5 rounded-full transition',
+                      lead.optedOut ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-green-50 text-green-600 hover:bg-green-100')}
+                    title="לחץ לשינוי"
+                  >
+                    {lead.optedOut ? 'הוסר ✕' : 'פעיל ✓'}
+                  </button>
+                </InfoRow>
               </div>
             </div>
           </div>
