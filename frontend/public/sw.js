@@ -1,4 +1,4 @@
-// Service worker for WA-Lead CRM: web-push notifications only.
+// Service worker for Real Estate Lead CRM: web-push notifications only.
 // Deliberately NO offline caching — a stale cached shell breaking a Vercel deploy is
 // worse than having no offline mode. The empty fetch handler exists only so browsers
 // treat the app as installable.

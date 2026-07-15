@@ -319,7 +319,9 @@ export default function CRMPage() {
         <button onClick={() => setMobileNav(true)} aria-label="פתח תפריט" className="w-9 h-9 -mr-2 flex items-center justify-center rounded-lg hover:bg-white/10 transition">
           <Menu className="w-5 h-5" />
         </button>
-        <span className="font-bold text-sm">Real Estate</span>
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/mark.png" alt="" className="w-6 h-6 rounded bg-white object-contain flex-shrink-0 p-0.5" />
+        <span className="font-bold text-sm">Real Estate Lead CRM</span>
       </div>
 
       {/* Mobile drawer backdrop */}

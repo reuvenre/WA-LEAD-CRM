@@ -1,7 +1,7 @@
 {
-  "name": "WA-Lead CRM",
-  "short_name": "WA-Lead",
-  "description": "ניהול לידים ושיחות וואטסאפ",
+  "name": "Real Estate Lead CRM",
+  "short_name": "RE Lead CRM",
+  "description": "ניהול לידים ושיחות וואטסאפ לנדל״ן",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

@@ -2,10 +2,10 @@ import type { Metadata, Viewport } from 'next';
 import './globals.css';
 
 export const metadata: Metadata = {
-  title: 'WA Lead CRM | מבית Win Solutions',
-  description: 'מערכת CRM לניהול לידים ושיחות WhatsApp — מבית Win Solutions',
+  title: 'Real Estate Lead CRM | מבית Win Solutions',
+  description: 'מערכת CRM לניהול לידים ושיחות WhatsApp לנדל״ן — מבית Win Solutions',
   manifest: '/manifest.webmanifest',
-  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'WA-Lead' },
+  appleWebApp: { capable: true, statusBarStyle: 'default', title: 'RE Lead CRM' },
   icons: { icon: '/icon-192.png', apple: '/apple-touch-icon.png' },
 };
 

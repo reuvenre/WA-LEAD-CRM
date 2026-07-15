@@ -81,7 +81,7 @@ function ResetPasswordContent() {
           <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur flex items-center justify-center mx-auto mb-4 border border-white/20">
             <MessageSquare className="w-8 h-8 text-white" />
           </div>
-          <h1 className="text-2xl font-bold text-white">WA Lead CRM</h1>
+          <h1 className="text-2xl font-bold text-white">Real Estate Lead CRM</h1>
           <p className="text-brand-200 text-sm mt-1">איפוס סיסמה</p>
         </div>
 

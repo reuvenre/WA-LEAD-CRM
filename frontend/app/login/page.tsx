@@ -2,7 +2,7 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
-import { Eye, EyeOff, MessageSquare, AlertCircle, Lock, User, ShieldCheck, UserPlus, KeyRound, Mail, CheckCircle } from 'lucide-react';
+import { Eye, EyeOff, AlertCircle, Lock, User, ShieldCheck, UserPlus, KeyRound, Mail, CheckCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { LoginBackground } from '@/components/LoginBackground';
 
@@ -212,12 +212,15 @@ export default function LoginPage() {
       <div className="relative z-10 w-full max-w-sm">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur flex items-center justify-center mx-auto mb-4 border border-white/20">
+          <div className="w-16 h-16 rounded-2xl bg-white flex items-center justify-center mx-auto mb-4 border border-white/20 shadow-lg overflow-hidden">
             {step === '2fa'
-              ? <ShieldCheck className="w-8 h-8 text-white" />
-              : <MessageSquare className="w-8 h-8 text-white" />}
+              ? <ShieldCheck className="w-8 h-8 text-brand-600" />
+              // The mark alone — the full badge's wordmark would be unreadable at 64px,
+              // and the product name is already spelled out in the h1 below.
+              // eslint-disable-next-line @next/next/no-img-element
+              : <img src="/mark.png" alt="Real Estate Lead CRM" className="w-full h-full object-contain p-2.5" />}
           </div>
-          <h1 className="text-2xl font-bold text-white">WA Lead CRM</h1>
+          <h1 className="text-2xl font-bold text-white">Real Estate Lead CRM</h1>
           <p className="text-brand-200 text-sm mt-1">
             {step === '2fa' ? 'אימות דו-שלבי' : step === 'forgot' ? 'שחזור סיסמה' : 'מבית Win Solutions'}
           </p>

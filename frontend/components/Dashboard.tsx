@@ -34,7 +34,7 @@ export function Dashboard({ onClose, prefetchedData }: DashboardProps) {
       <div className="flex items-center justify-between px-6 py-4 bg-white border-b border-surface-border flex-shrink-0">
         <div className="flex items-center gap-2">
           <BarChart2 className="w-5 h-5 text-brand-600" />
-          <h2 className="text-base font-bold text-slate-800">WA Lead CRM — דשבורד ביצועים</h2>
+          <h2 className="text-base font-bold text-slate-800">Real Estate Lead CRM — דשבורד ביצועים</h2>
         </div>
 
         {/* User info — top left corner */}

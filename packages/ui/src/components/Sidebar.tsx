@@ -12,6 +12,8 @@ export interface SidebarItem {
 export interface SidebarProps {
   brandLabel?: string;
   brandSubLabel?: string;
+  /** Logo mark. Falls back to `logoText` in a brand-coloured tile when omitted. */
+  logo?: ReactNode;
   logoText?: string;
   user?: { name?: string; role?: string };
   /** Highlight the user block in amber (e.g. for a super-admin). */
@@ -26,8 +28,9 @@ export interface SidebarProps {
 
 /** The navy navigation rail (generalized from the app's AppSidebar). */
 export function Sidebar({
-  brandLabel = 'Real Estate',
+  brandLabel = 'Real Estate Lead',
   brandSubLabel,
+  logo,
   logoText = 'RE',
   user,
   highlightUser,
@@ -40,9 +43,11 @@ export function Sidebar({
   return (
     <aside dir="rtl" className={cn('w-[220px] flex-shrink-0 flex flex-col h-screen bg-navy text-white', className)}>
       <div className="flex items-center gap-2.5 px-4 pt-5 pb-4 border-b border-white/10">
-        <div className="w-8 h-8 rounded-md bg-brand-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
-          {logoText}
-        </div>
+        {logo ?? (
+          <div className="w-8 h-8 rounded-md bg-brand-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0">
+            {logoText}
+          </div>
+        )}
         <div className="leading-tight">
           <div className="text-white font-bold text-sm">{brandLabel}</div>
           {brandSubLabel && <div className="text-brand-400 text-[11px]">{brandSubLabel}</div>}

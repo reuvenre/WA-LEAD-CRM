@@ -1,5 +1,5 @@
 /**
- * WA Lead CRM design tokens as a Tailwind preset.
+ * Real Estate Lead CRM design tokens as a Tailwind preset.
  * Consumers: `presets: [require('@wa-lead/ui/tailwind-preset')]`.
  * Keep in sync with the app's tailwind.config.ts brand/surface scale.
  */

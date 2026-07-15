@@ -65,7 +65,7 @@ export const WIDGET_JS = String.raw`(function () {
     '<div class="hd"><span class="ttl"></span><button aria-label="close">×</button></div>' +
     '<div class="feed"></div>' +
     '<div class="ftr"><input type="text" placeholder="הקלד הודעה..." /><button>שלח</button></div>' +
-    '<div class="pw">מופעל ע״י WA-Lead CRM</div>';
+    '<div class="pw">מופעל ע״י Real Estate Lead CRM</div>';
   root.appendChild(panel);
 
   var feed = panel.querySelector('.feed');

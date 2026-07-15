@@ -372,10 +372,10 @@ authRouter.post('/forgot-password', async (req: Request, res: Response) => {
 
         await sendMail(
           email.trim(),
-          'איפוס סיסמה — WA Lead CRM',
+          'איפוס סיסמה — Real Estate Lead CRM',
           `
           <div dir="rtl" style="font-family: Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 20px;">
-            <h2 style="color: #1e40af;">WA Lead CRM</h2>
+            <h2 style="color: #7c5cbf;">Real Estate Lead CRM</h2>
             <p>שלום ${user.username},</p>
             <p>קיבלנו בקשה לאיפוס הסיסמה שלך.</p>
             <p>לחץ על הכפתור למטה לאיפוס:</p>

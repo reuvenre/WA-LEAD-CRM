@@ -159,8 +159,9 @@ function Modal({ open, onClose, title, subtitle, width = 460, children }) {
   );
 }
 function Sidebar({
-  brandLabel = "Real Estate",
+  brandLabel = "Real Estate Lead",
   brandSubLabel,
+  logo,
   logoText = "RE",
   user,
   highlightUser,
@@ -172,7 +173,7 @@ function Sidebar({
 }) {
   return /* @__PURE__ */ jsxs("aside", { dir: "rtl", className: cn("w-[220px] flex-shrink-0 flex flex-col h-screen bg-navy text-white", className), children: [
     /* @__PURE__ */ jsxs("div", { className: "flex items-center gap-2.5 px-4 pt-5 pb-4 border-b border-white/10", children: [
-      /* @__PURE__ */ jsx("div", { className: "w-8 h-8 rounded-md bg-brand-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0", children: logoText }),
+      logo ?? /* @__PURE__ */ jsx("div", { className: "w-8 h-8 rounded-md bg-brand-600 flex items-center justify-center text-white font-bold text-xs flex-shrink-0", children: logoText }),
       /* @__PURE__ */ jsxs("div", { className: "leading-tight", children: [
         /* @__PURE__ */ jsx("div", { className: "text-white font-bold text-sm", children: brandLabel }),
         brandSubLabel && /* @__PURE__ */ jsx("div", { className: "text-brand-400 text-[11px]", children: brandSubLabel })

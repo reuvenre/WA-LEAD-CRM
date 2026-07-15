@@ -86,6 +86,8 @@ interface SidebarItem {
 interface SidebarProps {
     brandLabel?: string;
     brandSubLabel?: string;
+    /** Logo mark. Falls back to `logoText` in a brand-coloured tile when omitted. */
+    logo?: ReactNode;
     logoText?: string;
     user?: {
         name?: string;
@@ -101,7 +103,7 @@ interface SidebarProps {
     className?: string;
 }
 /** The navy navigation rail (generalized from the app's AppSidebar). */
-declare function Sidebar({ brandLabel, brandSubLabel, logoText, user, highlightUser, items, activeKey, onSelect, footer, className, }: SidebarProps): react.JSX.Element;
+declare function Sidebar({ brandLabel, brandSubLabel, logo, logoText, user, highlightUser, items, activeKey, onSelect, footer, className, }: SidebarProps): react.JSX.Element;
 
 interface SpinnerProps {
     /** Diameter in px. */
