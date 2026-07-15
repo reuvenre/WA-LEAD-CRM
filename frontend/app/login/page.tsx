@@ -207,21 +207,21 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative min-h-screen flex items-center justify-center overflow-hidden bg-gradient-to-b from-[#1e63c8] via-[#5b9be8] to-[#cfe3f7] p-4" dir="rtl">
+    <div className="relative h-screen flex flex-col overflow-y-auto overflow-x-hidden bg-gradient-to-b from-[#1e63c8] via-[#5b9be8] to-[#cfe3f7] p-4" dir="rtl">
       <LoginBackground />
-      <div className="relative z-10 w-full max-w-sm">
+      <div className="relative z-10 w-full max-w-sm m-auto">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-24 h-24 rounded-2xl bg-white flex items-center justify-center mx-auto mb-4 border border-white/20 shadow-lg overflow-hidden">
+          <div className="w-28 h-28 rounded-2xl bg-white flex items-center justify-center mx-auto mb-4 border border-white/20 shadow-lg overflow-hidden">
             {step === '2fa'
-              ? <ShieldCheck className="w-12 h-12 text-brand-600" />
+              ? <ShieldCheck className="w-14 h-14 text-brand-600" />
               // The mark alone — the full badge's wordmark would be unreadable at this
               // size, and the product name is already spelled out in the h1 below.
               // eslint-disable-next-line @next/next/no-img-element
-              : <img src="/mark.png" alt="Real Estate Lead CRM" className="w-full h-full object-contain p-3.5" />}
+              : <img src="/mark.png" alt="Real Estate Lead CRM" className="w-full h-full object-contain p-4" />}
           </div>
-          <h1 className="text-3xl font-bold text-white">Real Estate Lead CRM</h1>
-          <p className="text-white/90 text-sm font-semibold tracking-wide mt-1.5">מבית WIN SOLUTIONS</p>
+          <h1 className="text-4xl font-bold text-white">Real Estate Lead CRM</h1>
+          <p className="text-white/90 text-base font-semibold tracking-wide mt-2">מבית WIN SOLUTIONS</p>
           {(step === '2fa' || step === 'forgot') && (
             <p className="text-brand-200 text-sm mt-1">{step === '2fa' ? 'אימות דו-שלבי' : 'שחזור סיסמה'}</p>
           )}

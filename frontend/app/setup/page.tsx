@@ -82,16 +82,16 @@ export default function SetupPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-brand-900 via-brand-800 to-slate-900 p-4" dir="rtl">
-      <div className="w-full max-w-sm">
+    <div className="h-screen flex flex-col overflow-y-auto bg-gradient-to-br from-brand-900 via-brand-800 to-slate-900 p-4" dir="rtl">
+      <div className="w-full max-w-sm m-auto">
         {/* Logo */}
         <div className="text-center mb-8">
-          <div className="w-24 h-24 rounded-2xl bg-white flex items-center justify-center mx-auto mb-4 border border-white/20 shadow-lg overflow-hidden">
+          <div className="w-28 h-28 rounded-2xl bg-white flex items-center justify-center mx-auto mb-4 border border-white/20 shadow-lg overflow-hidden">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src="/mark.png" alt="Real Estate Lead CRM" className="w-full h-full object-contain p-3.5" />
+            <img src="/mark.png" alt="Real Estate Lead CRM" className="w-full h-full object-contain p-4" />
           </div>
-          <h1 className="text-3xl font-bold text-white">Real Estate Lead CRM</h1>
-          <p className="text-white/90 text-sm font-semibold tracking-wide mt-1.5">מבית WIN SOLUTIONS</p>
+          <h1 className="text-4xl font-bold text-white">Real Estate Lead CRM</h1>
+          <p className="text-white/90 text-base font-semibold tracking-wide mt-2">מבית WIN SOLUTIONS</p>
           <p className="text-brand-200 text-sm mt-1">הגדרה ראשונית</p>
         </div>
 
