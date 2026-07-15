@@ -95,9 +95,11 @@ export interface AnalyticsOverview {
   avgResponseMinutes: number | null;
   slaTargetMinutes: number;
   slaCompliance: number | null;
+  csatAvg: number | null;
+  csatResponses: number;
   leadsByStatus: Array<{ status: string; count: number }>;
   leadsThisWeek: Array<{ day: string; count: number }>;
-  agents: Array<{ name: string; leads: number; avgResponseMinutes: number | null; slaCompliance: number | null }>;
+  agents: Array<{ name: string; leads: number; avgResponseMinutes: number | null; slaCompliance: number | null; csatAvg: number | null }>;
   projects: Array<{ id: string; name: string; color: string; leads: number }>;
 }
 

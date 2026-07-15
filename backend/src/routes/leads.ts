@@ -9,6 +9,7 @@ import { logActivity } from '../lib/activity';
 import { triggerAutomations } from '../lib/automations';
 import { syncLeadMeeting } from '../lib/google';
 import { parseDefs, sanitizeAttributes } from '../lib/attributes';
+import { scheduleCsatSurvey } from '../lib/csat';
 
 export const leadsRouter = Router();
 
@@ -163,6 +164,8 @@ leadsRouter.patch('/:id', async (req: Request, res: Response) => {
       };
       await logActivity(lead.id, tenantId, 'שינוי סטטוס', `${statusLabels[current.status]} → ${statusLabels[status]}`);
       await triggerAutomations('lead.status_changed', { lead, previousStatus: current.status }, tenantId);
+      // Closing a lead queues the satisfaction survey (fire-and-forget; no-op if off).
+      if (status === 'CLOSED') void scheduleCsatSurvey(tenantId, lead.id);
     }
     if (assignedTo && assignedTo !== current.assignedTo) {
       await logActivity(lead.id, tenantId, 'שיוך נציג', `הוקצה ל-${assignedTo}`);

@@ -238,6 +238,7 @@ const DEFAULT_AUTO: AutoRepliesConfig = {
   greeting: { enabled: false, text: 'שלום! קיבלנו את פנייתך ונחזור אליך בהקדם 🙏' },
   offHours: { enabled: false, text: 'תודה על פנייתך! אנחנו זמינים א׳-ה׳ 09:00-18:00 ונחזור אליך בשעות הפעילות.', days: [0, 1, 2, 3, 4], from: '09:00', to: '18:00', tz: 'Asia/Jerusalem' },
   away: { enabled: false, text: 'מיד נחזור אליך 🙌', delayMin: 5 },
+  csat: { enabled: false, askText: 'תודה שבחרת בנו! נשמח אם תדרג/י את השירות שקיבלת מ-1 (לא מרוצה) עד 5 (מרוצה מאוד) 🙏', delayMin: 60 },
 };
 
 function EngagementSettings() {
@@ -262,6 +263,7 @@ function EngagementSettings() {
           greeting: { ...DEFAULT_AUTO.greeting!, ...stored.greeting },
           offHours: { ...DEFAULT_AUTO.offHours!, ...stored.offHours },
           away: { ...DEFAULT_AUTO.away!, ...stored.away },
+          csat: { ...DEFAULT_AUTO.csat!, ...stored.csat },
         });
         setLocked(!e.entitlements.features.autoReplies);
       })
@@ -383,6 +385,21 @@ function EngagementSettings() {
             onChange={(e) => patch('away', { delayMin: Math.max(1, Number(e.target.value) || 1) })}
             className="w-16 px-2 py-1 rounded-lg border border-surface-border bg-surface-muted" dir="ltr" />
           <span>דקות</span>
+        </div>
+      </AutoBlock>
+
+      {/* CSAT survey */}
+      <AutoBlock
+        title="סקר שביעות רצון" hint="נשלח אוטומטית אחרי סגירת ליד; תשובה 1-5 נרשמת בדשבורד."
+        on={!!cfg.csat?.enabled} onToggle={() => patch('csat', { enabled: !cfg.csat?.enabled })}
+        text={cfg.csat?.askText ?? ''} onText={(t) => patch('csat', { askText: t })}
+      >
+        <div className="flex items-center gap-2 text-xs text-slate-600">
+          <span>לשלוח</span>
+          <input type="number" min={1} max={10080} value={cfg.csat?.delayMin ?? 60}
+            onChange={(e) => patch('csat', { delayMin: Math.max(1, Number(e.target.value) || 1) })}
+            className="w-20 px-2 py-1 rounded-lg border border-surface-border bg-surface-muted" dir="ltr" />
+          <span>דקות אחרי הסגירה</span>
         </div>
       </AutoBlock>
 

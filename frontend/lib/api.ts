@@ -23,6 +23,8 @@ export interface AutoRepliesConfig {
   greeting?: { enabled: boolean; text: string };
   offHours?: { enabled: boolean; text: string; days: number[]; from: string; to: string; tz?: string };
   away?: { enabled: boolean; text: string; delayMin: number };
+  // Post-close satisfaction survey (asked `delayMin` after a lead is closed).
+  csat?: { enabled: boolean; askText: string; delayMin: number };
 }
 
 const BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -145,9 +147,9 @@ export const api = {
   campaigns: {
     list: () => request<Campaign[]>('/api/campaigns'),
     get: (id: string) => request<Campaign>(`/api/campaigns/${id}`),
-    create: (data: { name: string; body?: string; filter?: CampaignFilter; scheduledAt?: string | null }) =>
+    create: (data: { name: string; body?: string; filter?: CampaignFilter; steps?: Array<{ afterHours: number; body: string }>; scheduledAt?: string | null }) =>
       request<Campaign>('/api/campaigns', { method: 'POST', body: JSON.stringify(data) }),
-    update: (id: string, data: { name?: string; body?: string; filter?: CampaignFilter; scheduledAt?: string | null }) =>
+    update: (id: string, data: { name?: string; body?: string; filter?: CampaignFilter; steps?: Array<{ afterHours: number; body: string }>; scheduledAt?: string | null }) =>
       request<Campaign>(`/api/campaigns/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
     preview: (id: string) => request<{ count: number; sample: Array<{ name: string; phone: string | null }> }>(`/api/campaigns/${id}/preview`, { method: 'POST' }),
     send: (id: string) => request<{ success: boolean; audience: number }>(`/api/campaigns/${id}/send`, { method: 'POST' }),

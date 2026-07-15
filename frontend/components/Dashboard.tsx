@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import {
-  Users, Flame, CheckCircle, TrendingUp, MessageCircle, Clock, BarChart2, UserCircle, Building2, FolderKanban,
+  Users, Flame, CheckCircle, TrendingUp, MessageCircle, Clock, BarChart2, UserCircle, Building2, FolderKanban, Star,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { decodeToken, ROLE_LABELS } from '@/lib/auth';
@@ -88,6 +88,18 @@ export function Dashboard({ onClose, prefetchedData }: DashboardProps) {
             />
           </div>
 
+          {data.csatAvg != null && (
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <KpiCard
+                label={`שביעות רצון (${data.csatResponses} דירוגים)`}
+                value={`${data.csatAvg} / 5`}
+                icon={<Star className="w-5 h-5" />}
+                color={data.csatAvg >= 4 ? 'green' : data.csatAvg >= 3 ? 'amber' : 'red'}
+                small
+              />
+            </div>
+          )}
+
           {/* Agents + Status side by side */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Agents list */}
@@ -116,6 +128,11 @@ export function Dashboard({ onClose, prefetchedData }: DashboardProps) {
                             {agent.avgResponseMinutes != null && (
                               <span className="text-[10px] text-slate-400 flex items-center gap-0.5" title="זמן מענה ממוצע">
                                 <Clock className="w-3 h-3" />{agent.avgResponseMinutes}ד'
+                              </span>
+                            )}
+                            {agent.csatAvg != null && (
+                              <span className="text-[10px] text-amber-600 flex items-center gap-0.5" title="שביעות רצון ממוצעת">
+                                <Star className="w-3 h-3" />{agent.csatAvg}
                               </span>
                             )}
                             {agent.slaCompliance != null && (

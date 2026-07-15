@@ -9,6 +9,7 @@ import { handleInboundAutoReply } from '../lib/autoReply';
 import { triggerAutomations } from '../lib/automations';
 import { notifyLeadEvent } from '../lib/push';
 import { classifyOptMessage, handleOptChange } from '../lib/optOut';
+import { tryCaptureCsatAnswer } from '../lib/csat';
 
 export const webhookRouter = Router();
 
@@ -158,10 +159,16 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
   // Post-ingest hooks (inbound only). Fire-and-forget so a slow/failed hook never
   // delays the webhook 200 (Green API retries on non-2xx).
   if (isIncoming) {
-    // "הסר"/"הצטרף" is a list command → handle it and skip the normal auto-reply.
+    // Precedence: list command > CSAT rating reply > normal auto-reply. Each of the
+    // first two consumes the message so we don't also fire a greeting/off-hours reply.
     const optKind = classifyOptMessage(content);
-    if (optKind) void handleOptChange(tenantId, lead.id, optKind);
-    else void handleInboundAutoReply({ tenantId, lead, isNewLead: !existingLead });
+    if (optKind) {
+      void handleOptChange(tenantId, lead.id, optKind);
+    } else {
+      void tryCaptureCsatAnswer(tenantId, lead, content).then((captured) => {
+        if (!captured) return handleInboundAutoReply({ tenantId, lead, isNewLead: !existingLead });
+      });
+    }
     // The 'lead.message_received' automation event was declared but never fired until now.
     void triggerAutomations('lead.message_received', { lead, message }, tenantId);
     // Push notification to the managers + assigned agent (mirrors emitScoped).

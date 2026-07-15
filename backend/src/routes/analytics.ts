@@ -53,10 +53,19 @@ analyticsRouter.get('/overview', async (req: Request, res: Response) => {
       GROUP BY l."assignedTo"
     `);
 
+    // CSAT: overall average + per-agent, over rated leads only (scoped like everything else).
+    const csatByAgent = prisma.$queryRaw<Array<{ agent: string | null; avg_score: number; responses: number }>>(Prisma.sql`
+      SELECT "assignedTo" AS agent, AVG("csatScore")::float AS avg_score, COUNT(*)::int AS responses
+      FROM "Lead"
+      WHERE "tenantId" = ${tenantId} AND "csatScore" IS NOT NULL
+        ${leadSql}
+      GROUP BY "assignedTo"
+    `);
+
     const [
       totalLeads, newToday, hotLeads, closedLeads, lostLeads, inProgressLeads,
       messagesToday, messagesThisWeek, avgResponseTime, leadsByStatus, leadsThisWeek, agentLeads, projectsData,
-      agentResponse,
+      agentResponse, csatRows,
     ] = await Promise.all([
       prisma.lead.count({ where: { tenantId, ...leadScope } }),
       prisma.lead.count({ where: { tenantId, ...leadScope, createdAt: { gte: todayStart } } }),
@@ -103,7 +112,7 @@ analyticsRouter.get('/overview', async (req: Request, res: Response) => {
             select: { id: true, name: true, color: true, _count: { select: { leads: true } } },
             orderBy: { createdAt: 'asc' },
           }),
-      responseByAgent,
+      responseByAgent, csatByAgent,
     ]);
 
     // Index per-agent response metrics for quick lookup + a scoped overall compliance.
@@ -111,6 +120,12 @@ analyticsRouter.get('/overview', async (req: Request, res: Response) => {
     let slaSample = 0, slaWithin = 0;
     for (const r of agentResponse) { slaSample += Number(r.sample); slaWithin += Number(r.within_sla); }
     const slaCompliance = slaSample > 0 ? Math.round((slaWithin / slaSample) * 100) : null;
+
+    // CSAT: weighted overall average across agents + a per-agent lookup.
+    const csatMap = new Map(csatRows.filter((c) => c.agent).map((c) => [c.agent!, c]));
+    let csatTotal = 0, csatCount = 0;
+    for (const c of csatRows) { csatTotal += Number(c.avg_score) * Number(c.responses); csatCount += Number(c.responses); }
+    const csatAvg = csatCount > 0 ? Math.round((csatTotal / csatCount) * 10) / 10 : null;
 
     const avgMinutes = avgResponseTime[0]?.avg_minutes
       ? Math.round(Number(avgResponseTime[0].avg_minutes))
@@ -123,17 +138,21 @@ analyticsRouter.get('/overview', async (req: Request, res: Response) => {
       avgResponseMinutes: avgMinutes,
       slaTargetMinutes: slaTarget,
       slaCompliance,
+      csatAvg,
+      csatResponses: csatCount,
       leadsByStatus: leadsByStatus.map((s) => ({ status: s.status, count: s._count.status })),
       leadsThisWeek,
       // Leaderboard enriched with each agent's first-response avg + SLA compliance %.
       agents: agentLeads.map((a) => {
         const r = a.assignedTo ? respByAgent.get(a.assignedTo) : undefined;
         const sample = r ? Number(r.sample) : 0;
+        const c = a.assignedTo ? csatMap.get(a.assignedTo) : undefined;
         return {
           name: a.assignedTo!,
           leads: a._count.id,
           avgResponseMinutes: r && r.avg_minutes != null ? Math.round(Number(r.avg_minutes)) : null,
           slaCompliance: sample > 0 ? Math.round((Number(r!.within_sla) / sample) * 100) : null,
+          csatAvg: c ? Math.round(Number(c.avg_score) * 10) / 10 : null,
         };
       }),
       projects: projectsData.map((p) => ({ id: p.id, name: p.name, color: p.color, leads: p._count.leads })),

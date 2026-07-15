@@ -2,7 +2,7 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { isManager } from '../middleware/auth';
-import { audienceWhere, startCampaign, type CampaignFilter } from '../lib/campaigns';
+import { audienceWhere, startCampaign, parseSteps, type CampaignFilter } from '../lib/campaigns';
 
 export const campaignsRouter = Router();
 
@@ -98,7 +98,10 @@ campaignsRouter.post('/:id/send', async (req: Request, res: Response) => {
   const campaign = await prisma.campaign.findFirst({ where: { id: req.params.id, tenantId } });
   if (!campaign) return res.status(404).json({ error: 'קמפיין לא נמצא' });
   if (!['draft', 'paused'].includes(campaign.status)) return res.status(400).json({ error: 'הקמפיין כבר רץ או הסתיים' });
-  if (!campaign.body.trim()) return res.status(400).json({ error: 'אין תוכן להודעה' });
+  // A campaign is either a one-shot broadcast (body) or a drip sequence (steps).
+  if (!campaign.body.trim() && parseSteps(campaign.steps).length === 0) {
+    return res.status(400).json({ error: 'אין תוכן להודעה' });
+  }
 
   const audience = await startCampaign(tenantId, campaign.id);
   return res.json({ success: true, audience });

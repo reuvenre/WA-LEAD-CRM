@@ -140,6 +140,11 @@ function CampaignEditor({ campaign, onClose, onSaved, onToast }: {
   const [projects, setProjects] = useState<Project[]>([]);
   const [audience, setAudience] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
+  // A campaign is either a one-shot broadcast (body) or a drip sequence (steps).
+  const [isDrip, setIsDrip] = useState((campaign?.steps?.length ?? 0) > 0);
+  const [steps, setSteps] = useState<Array<{ afterHours: number; body: string }>>(
+    campaign?.steps?.length ? campaign.steps : [{ afterHours: 0, body: '' }],
+  );
 
   useEffect(() => { api.projects.list().then(setProjects).catch(() => {}); }, []);
 
@@ -152,7 +157,14 @@ function CampaignEditor({ campaign, onClose, onSaved, onToast }: {
 
   // Ensure a saved draft exists (create or update) and return its id.
   const ensureDraft = async (): Promise<string> => {
-    const data = { name: name.trim() || 'קמפיין ללא שם', body, filter: buildFilter(), scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null };
+    const cleanSteps = steps.filter((s) => s.body.trim());
+    const data = {
+      name: name.trim() || 'קמפיין ללא שם',
+      body: isDrip ? '' : body,
+      steps: isDrip ? cleanSteps : [],
+      filter: buildFilter(),
+      scheduledAt: scheduledAt ? new Date(scheduledAt).toISOString() : null,
+    };
     if (id) { await api.campaigns.update(id, data); return id; }
     const c = await api.campaigns.create(data); setId(c.id); return c.id;
   };
@@ -170,7 +182,7 @@ function CampaignEditor({ campaign, onClose, onSaved, onToast }: {
   };
 
   const doSend = async () => {
-    if (!body.trim()) { onToast('כתוב תוכן להודעה'); return; }
+    if (isDrip ? !steps.some((s) => s.body.trim()) : !body.trim()) { onToast('כתוב תוכן להודעה'); return; }
     setBusy(true);
     try {
       const cid = await ensureDraft();
@@ -220,11 +232,56 @@ function CampaignEditor({ campaign, onClose, onSaved, onToast }: {
               <p className="text-[11px] text-slate-400">שולח רק ללקוחות וואטסאפ שלא הוסרו מרשימת התפוצה.</p>
             </div>
 
-            <Field label="תוכן ההודעה">
-              <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} placeholder="שלום {{שם}}, ..."
-                className="w-full px-3 py-2 text-sm rounded-lg border border-surface-border bg-surface-muted focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none" />
-              <p className="text-[11px] text-slate-400 mt-1">משתנים: <code dir="ltr" className="bg-slate-100 px-1 rounded">{'{{שם}}'}</code> <code dir="ltr" className="bg-slate-100 px-1 rounded">{'{{attr:key}}'}</code></p>
-            </Field>
+            {/* Mode: one-shot broadcast vs. multi-step drip */}
+            <div className="flex gap-1 bg-surface-subtle rounded-lg p-1">
+              <button onClick={() => setIsDrip(false)}
+                className={cn('flex-1 text-xs font-semibold py-1.5 rounded-md transition', !isDrip ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500')}>
+                הודעה אחת
+              </button>
+              <button onClick={() => setIsDrip(true)}
+                className={cn('flex-1 text-xs font-semibold py-1.5 rounded-md transition', isDrip ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500')}>
+                רצף הודעות (drip)
+              </button>
+            </div>
+
+            {!isDrip ? (
+              <Field label="תוכן ההודעה">
+                <textarea value={body} onChange={(e) => setBody(e.target.value)} rows={4} placeholder="שלום {{שם}}, ..."
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-surface-border bg-surface-muted focus:outline-none focus:ring-2 focus:ring-brand-500 resize-none" />
+                <p className="text-[11px] text-slate-400 mt-1">משתנים: <code dir="ltr" className="bg-slate-100 px-1 rounded">{'{{שם}}'}</code> <code dir="ltr" className="bg-slate-100 px-1 rounded">{'{{attr:key}}'}</code></p>
+              </Field>
+            ) : (
+              <Field label="שלבי הרצף">
+                <div className="space-y-2">
+                  {steps.map((s, i) => (
+                    <div key={i} className="bg-surface-subtle rounded-lg p-2.5 space-y-1.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[11px] font-bold text-brand-700 flex-shrink-0">שלב {i + 1}</span>
+                        <span className="text-[11px] text-slate-500">אחרי</span>
+                        <input type="number" min={0} max={2160} value={s.afterHours}
+                          onChange={(e) => setSteps((p) => p.map((x, j) => j === i ? { ...x, afterHours: Math.max(0, Number(e.target.value) || 0) } : x))}
+                          className="w-16 px-2 py-1 text-xs rounded-lg border border-surface-border bg-white" dir="ltr" />
+                        <span className="text-[11px] text-slate-500">שעות</span>
+                        {steps.length > 1 && (
+                          <button onClick={() => setSteps((p) => p.filter((_, j) => j !== i))}
+                            className="mr-auto w-6 h-6 flex items-center justify-center rounded text-slate-400 hover:bg-red-50 hover:text-red-500">
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        )}
+                      </div>
+                      <textarea value={s.body} rows={2} placeholder="שלום {{שם}}, ..."
+                        onChange={(e) => setSteps((p) => p.map((x, j) => j === i ? { ...x, body: e.target.value } : x))}
+                        className="w-full px-2 py-1.5 text-sm rounded-lg border border-surface-border bg-white resize-none focus:outline-none focus:ring-2 focus:ring-brand-500" />
+                    </div>
+                  ))}
+                  <button onClick={() => setSteps((p) => [...p, { afterHours: 24, body: '' }])}
+                    className="text-xs font-semibold text-brand-600 hover:underline flex items-center gap-1">
+                    <Plus className="w-3.5 h-3.5" /> הוסף שלב
+                  </button>
+                  <p className="text-[11px] text-slate-400">הרצף נעצר אוטומטית ברגע שהלקוח מגיב.</p>
+                </div>
+              </Field>
+            )}
 
             <Field label="תזמון (אופציונלי)">
               <input type="datetime-local" value={scheduledAt} onChange={(e) => setScheduledAt(e.target.value)}
