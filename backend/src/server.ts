@@ -36,10 +36,15 @@ validateEnv();
 const app = express();
 const httpServer = http.createServer(app);
 
-// Railway terminates TLS at a single proxy hop — trust it so req.ip is the real
-// client address (the widget/auth rate limiters key on it; without this every
-// caller shared the proxy's IP and per-IP limits were meaningless).
-app.set('trust proxy', 1);
+// Railway routes through a multi-hop proxy chain whose internal IPs rotate per
+// request. `trust proxy: 1` peeled only one hop, so req.ip resolved to a rotating
+// internal proxy address and the per-IP rate limiters never grouped a real client's
+// requests. `true` (Railway's documented setting) walks X-Forwarded-For to the
+// leftmost entry = the actual client, so req.ip is stable per client. Trade-off: a
+// client could spoof X-Forwarded-For to rotate its apparent IP, but these limiters
+// are anti-abuse defense-in-depth (the auth limiter is identity-keyed, not IP-keyed,
+// and widget lead creation is separately capped), so best-effort client IP is fine.
+app.set('trust proxy', true);
 
 // Security headers. CORP is disabled globally: widget.js is intentionally loaded
 // cross-origin by customer sites, and the API itself serves no embeddable documents
