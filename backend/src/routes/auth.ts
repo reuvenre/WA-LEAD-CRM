@@ -45,6 +45,20 @@ function tooManyAttempts(key: string, max: number, windowMs: number): boolean {
   return false;
 }
 function clearAttempts(key: string) { attemptLog.delete(key); }
+
+// ─── One-time OAuth handoff codes ─────────────────────────────────────────────
+// A session JWT must never ride the URL (browser history, Referer headers and access
+// logs would all capture a live 8h token). The Google callback instead redirects with
+// a short-lived single-use code which the login page exchanges via POST.
+// In-memory is fine: single instance, and the exchange happens within seconds.
+const oauthHandoff = new Map<string, { token?: string; tempToken?: string; expires: number }>();
+function mintOauthCode(data: { token?: string; tempToken?: string }): string {
+  const now = Date.now();
+  for (const [k, v] of oauthHandoff) if (v.expires < now) oauthHandoff.delete(k); // sweep
+  const code = crypto.randomBytes(24).toString('hex');
+  oauthHandoff.set(code, { ...data, expires: now + 60_000 });
+  return code;
+}
 // Opportunistic cleanup so the map can't grow unbounded over a long uptime.
 setInterval(() => {
   const now = Date.now();
@@ -54,10 +68,21 @@ setInterval(() => {
   }
 }, 30 * 60 * 1000).unref();
 
+// A real bcrypt hash of a random throwaway string — compared against when the
+// username doesn't exist, so hit/miss take the same time (anti user-enumeration).
+const DUMMY_HASH = bcrypt.hashSync(crypto.randomBytes(16).toString('hex'), 10);
+
 // ─── POST /api/auth/register ──────────────────────────────────────────────────
 // Create a new tenant + admin user
 authRouter.post('/register', async (req: Request, res: Response) => {
   const { companyName, email, username, password } = req.body;
+
+  // Unauthenticated create-a-tenant endpoint — throttle per IP (trust proxy is on,
+  // so req.ip is the real client) and per target email so a bot can't mass-register.
+  if (tooManyAttempts(`register:ip:${req.ip}`, 5, 60 * 60 * 1000)
+    || tooManyAttempts(`register:email:${String(email ?? '').trim().toLowerCase()}`, 3, 60 * 60 * 1000)) {
+    return res.status(429).json({ error: 'יותר מדי ניסיונות הרשמה — נסה שוב מאוחר יותר' });
+  }
 
   if (!companyName?.trim()) return res.status(400).json({ error: 'נדרש שם חברה' });
   if (!email?.trim()) return res.status(400).json({ error: 'נדרשת כתובת אימייל' });
@@ -135,7 +160,12 @@ authRouter.post('/login', async (req: Request, res: Response) => {
     user = matches[0] ?? null;
   }
 
-  if (!user) return res.status(401).json({ error: 'שם משתמש או סיסמה שגויים' });
+  if (!user) {
+    // Burn the same bcrypt time as a real comparison so response timing can't be
+    // used to enumerate valid usernames.
+    await bcrypt.compare(password, DUMMY_HASH);
+    return res.status(401).json({ error: 'שם משתמש או סיסמה שגויים' });
+  }
   if (!user.tenant.active) return res.status(403).json({ error: 'החשבון אינו פעיל. צור קשר עם התמיכה.' });
 
   const valid = await bcrypt.compare(password, user.passwordHash);
@@ -202,12 +232,6 @@ authRouter.post('/verify', (req: Request, res: Response) => {
   } catch {
     return res.json({ valid: false });
   }
-});
-
-// ─── GET /api/auth/needs-setup ────────────────────────────────────────────────
-// Legacy: always false now (setup happens via /register)
-authRouter.get('/needs-setup', (_req: Request, res: Response) => {
-  return res.json({ needsSetup: false });
 });
 
 // ─── POST /api/auth/2fa/setup ─────────────────────────────────────────────────
@@ -321,10 +345,10 @@ authRouter.get('/google/callback', async (req: Request, res: Response) => {
           { userId: user.id, tenantId: user.tenantId, username: user.username, role: user.role, step: '2fa_pending' },
           JWT_SECRET, { expiresIn: '5m' },
         );
-        return res.redirect(`${fe}/login?tempToken=${encodeURIComponent(tempToken)}`);
+        return res.redirect(`${fe}/login?gcode=${mintOauthCode({ tempToken })}`);
       }
       const token = signToken({ userId: user.id, tenantId: user.tenantId, tenantName: user.tenant.name, username: user.username, role: user.role as AuthPayload['role'] });
-      return res.redirect(`${fe}/login?token=${encodeURIComponent(token)}`);
+      return res.redirect(`${fe}/login?gcode=${mintOauthCode({ token })}`);
     }
 
     return res.redirect(`${fe}/login?googleError=state`);
@@ -332,6 +356,17 @@ authRouter.get('/google/callback', async (req: Request, res: Response) => {
     console.error('Google OAuth callback error:', (e as Error).message);
     return res.redirect(`${fe}/login?googleError=failed`);
   }
+});
+
+// Exchange the one-time handoff code for the real token (single use, 60s TTL).
+authRouter.post('/google/exchange', (req: Request, res: Response) => {
+  const code = String(req.body?.code ?? '');
+  const entry = code ? oauthHandoff.get(code) : undefined;
+  if (entry) oauthHandoff.delete(code); // single use — even a failed consume burns it
+  if (!entry || entry.expires < Date.now()) {
+    return res.status(400).json({ error: 'הקוד אינו תקין או שפג תוקפו — נסה להתחבר שוב' });
+  }
+  return res.json({ token: entry.token, tempToken: entry.tempToken });
 });
 
 // ─── POST /api/auth/forgot-password ──────────────────────────────────────────
@@ -359,12 +394,14 @@ authRouter.post('/forgot-password', async (req: Request, res: Response) => {
           data: { used: true },
         });
 
-        // Generate token
+        // Generate token. Only its SHA-256 is stored — a DB leak (backup, injection
+        // elsewhere) must not yield usable reset links. The email carries the raw token.
         const token = crypto.randomBytes(32).toString('hex');
+        const tokenHash = crypto.createHash('sha256').update(token).digest('hex');
         const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
 
         await prisma.passwordResetToken.create({
-          data: { userId: user.id, token, expiresAt },
+          data: { userId: user.id, token: tokenHash, expiresAt },
         });
 
         const frontendUrl = process.env.FRONTEND_URL || 'http://localhost:3002';
@@ -406,7 +443,9 @@ authRouter.post('/reset-password', async (req: Request, res: Response) => {
     return res.status(429).json({ error: 'יותר מדי ניסיונות. נסה שוב בעוד מספר דקות.' });
   }
 
-  const resetToken = await prisma.passwordResetToken.findUnique({ where: { token } });
+  // Tokens are stored hashed (SHA-256) — hash the presented value to look it up.
+  const tokenHash = crypto.createHash('sha256').update(String(token)).digest('hex');
+  const resetToken = await prisma.passwordResetToken.findUnique({ where: { token: tokenHash } });
   if (!resetToken) return res.status(400).json({ error: 'קישור לא תקין' });
   if (resetToken.used) return res.status(400).json({ error: 'הקישור כבר נוצל' });
   if (resetToken.expiresAt < new Date()) return res.status(400).json({ error: 'הקישור פג תוקף' });

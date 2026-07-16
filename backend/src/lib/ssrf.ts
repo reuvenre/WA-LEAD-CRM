@@ -1,8 +1,10 @@
 // Guards against SSRF for user-supplied outbound webhook URLs.
-// Blocks non-HTTP(S) schemes and hostnames that resolve to private / loopback /
-// link-local / cloud-metadata ranges by literal address. (Hostnames that resolve
-// to private IPs via DNS are not caught here; for full protection resolve + check
-// at request time. This covers the common literal-IP and localhost attacks.)
+// Two layers: isSafeWebhookUrl (sync, literal-address checks — used at save time for
+// fast validation feedback) and isSafeWebhookUrlResolved (async — resolves the host
+// via DNS at REQUEST time and re-checks every returned address, so a hostname whose
+// A/AAAA record points at a private/metadata IP can't slip through).
+
+import { lookup } from 'dns/promises';
 
 const BLOCKED_HOSTNAMES = new Set([
   'localhost',
@@ -49,4 +51,27 @@ export function isSafeWebhookUrl(raw: string): boolean {
   if (isPrivateIPv6(host)) return false;
 
   return true;
+}
+
+function isPrivateAddress(addr: string): boolean {
+  return isPrivateIPv4(addr) || isPrivateIPv6(addr);
+}
+
+/**
+ * Full request-time check: syntactic screen + DNS resolution, rejecting when ANY
+ * resolved address is private/loopback/link-local/metadata. DNS failure = unsafe
+ * (fail closed). Call this immediately before fetching a user-supplied URL.
+ */
+export async function isSafeWebhookUrlResolved(raw: string): Promise<boolean> {
+  if (!isSafeWebhookUrl(raw)) return false;
+  const host = new URL(raw).hostname.replace(/^\[/, '').replace(/\]$/, '');
+  // Literal IPs were already screened above — nothing to resolve.
+  if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host) || host.includes(':')) return true;
+  try {
+    const addrs = await lookup(host, { all: true, verbatim: true });
+    if (addrs.length === 0) return false;
+    return addrs.every((a) => !isPrivateAddress(a.address.toLowerCase()));
+  } catch {
+    return false;
+  }
 }

@@ -51,13 +51,21 @@ registerJobHandler('csat_ask', async (payload: unknown, job: ClaimedJob) => {
   const cfg = parseCsat(tenant.autoReplies);
   if (!cfg?.enabled) return;
 
-  const lead = await prisma.lead.findFirst({ where: { id: leadId, tenantId: job.tenantId }, select: { optedOut: true, status: true } });
+  const lead = await prisma.lead.findFirst({ where: { id: leadId, tenantId: job.tenantId }, select: { optedOut: true, status: true, csatAskedAt: true } });
   if (!lead || lead.optedOut) return;
   if (lead.status !== 'CLOSED') return; // reopened before the survey fired → skip
+  // Already stamped = a previous attempt crashed AFTER the provider send — the
+  // customer likely got the question; never ask twice.
+  if (lead.csatAskedAt && Date.now() - lead.csatAskedAt.getTime() < ANSWER_WINDOW_MS) return;
 
-  const r = await sendOutboundText(job.tenantId, leadId, cfg.askText?.trim() || DEFAULT_ASK, {});
-  if (!r.ok) throw new Error(r.error || 'csat ask failed'); // let the runner retry
+  // Stamp BEFORE sending (at-most-once): a retry after a mid-send crash sees the
+  // stamp and skips. On a clean provider failure we un-stamp so the retry still runs.
   await prisma.lead.update({ where: { id: leadId }, data: { csatAskedAt: new Date() } });
+  const r = await sendOutboundText(job.tenantId, leadId, cfg.askText?.trim() || DEFAULT_ASK, {});
+  if (!r.ok) {
+    await prisma.lead.update({ where: { id: leadId }, data: { csatAskedAt: null } }).catch(() => {});
+    throw new Error(r.error || 'csat ask failed'); // let the runner retry
+  }
 });
 
 /**
@@ -74,7 +82,11 @@ export async function tryCaptureCsatAnswer(
     if (Date.now() - lead.csatAskedAt.getTime() > ANSWER_WINDOW_MS) return false;
     if (lead.csatScore != null) return false; // already answered
 
-    const m = content.trim().match(/^([1-5])$/); // a bare 1–5 only
+    // A short reply whose only digit is 1–5 ("5", "5 תודה", "תודה רבה 4!"). Long
+    // messages are treated as conversation, not a rating — "יש לי 3 ילדים" must not
+    // score a 3. Multiple digits ("10", "45") never match.
+    const trimmed = content.trim();
+    const m = trimmed.length <= 12 ? trimmed.match(/^[^\d]*([1-5])[^\d]*$/u) : null;
     if (!m) return false;
     const score = Number(m[1]);
 

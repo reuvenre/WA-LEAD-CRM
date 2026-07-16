@@ -39,6 +39,22 @@ export async function enqueueJob(tenantId: string, type: string, runAt: Date, pa
   return job.id;
 }
 
+// Persist an idempotency checkpoint into the job's own payload. A handler that
+// stamps e.g. { sent: true } BEFORE a provider call can skip the call when the
+// job is retried after a crash — the retry receives the updated payload.
+export async function setJobPayload(jobId: string, payload: object): Promise<void> {
+  await prisma.job.update({ where: { id: jobId }, data: { payload } });
+}
+
+// Drop queued (not yet claimed) jobs of a type whose JSON payload matches. Used to
+// cancel a campaign's pending send chain on pause/resume so chains never duplicate.
+export async function cancelPendingJobs(tenantId: string, type: string, payloadKey: string, payloadValue: string): Promise<number> {
+  const r = await prisma.job.deleteMany({
+    where: { tenantId, type, status: 'pending', payload: { path: [payloadKey], equals: payloadValue } },
+  });
+  return r.count;
+}
+
 // Claim a batch atomically: flip pending→running and return the claimed rows.
 // SKIP LOCKED makes concurrent claimers (belt-and-suspenders) never double-run a job.
 async function claimBatch(): Promise<ClaimedJob[]> {
@@ -75,10 +91,23 @@ async function runJob(job: ClaimedJob): Promise<void> {
   }
 }
 
+// Jobs stuck in 'running' (process crashed/killed mid-run) get re-armed once they're
+// demonstrably stale. NEVER re-arm fresh 'running' rows: during a Railway redeploy the
+// old instance can still be executing them, and an eager re-arm would double-run sends.
+const STALE_RUNNING_MS = 10 * 60_000;
+async function sweepStaleRunning(): Promise<void> {
+  const r = await prisma.job.updateMany({
+    where: { status: 'running', updatedAt: { lt: new Date(Date.now() - STALE_RUNNING_MS) } },
+    data: { status: 'pending' },
+  }).catch(() => null);
+  if (r && r.count > 0) console.log(`♻️ Re-armed ${r.count} stale interrupted job(s)`);
+}
+
 async function tick(): Promise<void> {
   if (tickRunning) return;
   tickRunning = true;
   try {
+    await sweepStaleRunning();
     // Keep claiming until the due queue is drained (bounded per-batch).
     for (;;) {
       const batch = await claimBatch();
@@ -96,10 +125,9 @@ async function tick(): Promise<void> {
 
 export function startJobRunner(): void {
   if (timer) return;
-  // Re-arm jobs stuck in 'running' from a previous crash/redeploy (best-effort).
-  prisma.job.updateMany({ where: { status: 'running' }, data: { status: 'pending' } })
-    .then((r) => { if (r.count > 0) console.log(`♻️ Re-armed ${r.count} interrupted job(s)`); })
-    .catch(() => { /* table may not exist yet on first boot before migration */ });
+  // Stale 'running' rows are re-armed inside tick() (sweepStaleRunning) — an
+  // unconditional boot-time re-arm raced the still-draining old instance during
+  // redeploys and double-ran jobs.
   timer = setInterval(() => { void tick(); }, POLL_INTERVAL_MS);
   timer.unref(); // never keep the process alive just for the poller
   console.log('⏰ Job runner started (poll every 15s)');

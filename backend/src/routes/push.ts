@@ -20,8 +20,20 @@ pushRouter.post('/subscribe', async (req: Request, res: Response) => {
   const auth = subscription?.keys?.auth;
   if (!ep || !p256dh || !auth) return res.status(400).json({ error: 'מנוי דחיפה לא תקין' });
 
-  // Endpoint is globally unique; upsert re-binds it to the current user (e.g. a shared
-  // device where a different agent logs in).
+  if (!/^https:\/\//.test(ep) || ep.length > 1000) return res.status(400).json({ error: 'מנוי דחיפה לא תקין' });
+
+  // Endpoint is globally unique; re-binding it to the current user is the legitimate
+  // shared-device flow (a different agent logs in on the same browser — the browser
+  // proves possession by presenting its own endpoint). Cross-TENANT rebinds are never
+  // legitimate though, so a subscription owned by another tenant's user is replaced
+  // only after deleting it (never silently moved between organizations).
+  const existing = await prisma.pushSubscription.findUnique({
+    where: { endpoint: ep },
+    select: { user: { select: { tenantId: true } } },
+  });
+  if (existing && existing.user.tenantId !== req.user!.tenantId) {
+    await prisma.pushSubscription.delete({ where: { endpoint: ep } }).catch(() => {});
+  }
   await prisma.pushSubscription.upsert({
     where: { endpoint: ep },
     update: { userId: req.user!.userId, p256dh, auth, userAgent: userAgent?.slice(0, 300) ?? null },

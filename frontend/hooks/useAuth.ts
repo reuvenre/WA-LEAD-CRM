@@ -10,43 +10,30 @@ export function useAuth() {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    // First: check if initial setup is needed
-    fetch(`${API}/api/auth/needs-setup`)
+    // Check for a valid session token. (The old first-boot /setup flow is gone —
+    // onboarding happens via /register.)
+    const token = localStorage.getItem('crm_token');
+    if (!token) {
+      router.replace('/login');
+      return;
+    }
+
+    fetch(`${API}/api/auth/verify`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+    })
       .then((r) => r.json())
-      .then((data: { needsSetup: boolean }) => {
-        if (data.needsSetup) {
-          router.replace('/setup');
-          return;
-        }
-
-        // Setup done — check for valid session token
-        const token = localStorage.getItem('crm_token');
-        if (!token) {
+      .then((d: { valid: boolean }) => {
+        if (!d.valid) {
+          localStorage.removeItem('crm_token');
           router.replace('/login');
-          return;
+        } else {
+          setReady(true);
         }
-
-        fetch(`${API}/api/auth/verify`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}` },
-        })
-          .then((r) => r.json())
-          .then((d: { valid: boolean }) => {
-            if (!d.valid) {
-              localStorage.removeItem('crm_token');
-              router.replace('/login');
-            } else {
-              setReady(true);
-            }
-          })
-          .catch(() => {
-            // Can't verify the session — fail closed and send the user to login
-            // rather than rendering an authenticated-looking shell on a bogus token.
-            router.replace('/login');
-          });
       })
       .catch(() => {
-        // Can't reach the auth service at all — fail closed to login.
+        // Can't verify the session — fail closed and send the user to login
+        // rather than rendering an authenticated-looking shell on a bogus token.
         router.replace('/login');
       });
   }, [router]);

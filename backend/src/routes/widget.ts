@@ -28,7 +28,9 @@ function configOf(json: unknown): WidgetConfig {
   };
 }
 
-// In-memory sliding-window rate limit (single instance) keyed by ip|visitorId.
+// In-memory sliding-window rate limit (single instance). Keys always include the
+// caller's IP: a visitorId is attacker-chosen, so any limit keyed on it alone is
+// bypassed by simply rotating ids.
 const hits = new Map<string, number[]>();
 function rateLimited(key: string, max = 10, windowMs = 60_000): boolean {
   const now = Date.now();
@@ -68,12 +70,28 @@ function mapMsg(m: { id: string; content: string; direction: string; type: strin
 // (tenant, visitorId) and returns the appearance config + message history.
 widgetRouter.post('/session', async (req: Request, res: Response) => {
   try {
+    // The widgetKey is public by design (embedded in the customer's page source), so
+    // /session must defend itself: per-IP throttle + the plan's lead cap. Without
+    // them, anyone who viewed the page source could mint unbounded WEBCHAT leads.
+    if (rateLimited(`sess|${req.ip ?? 'ip'}`, 10, 60_000)) {
+      return res.status(429).json({ error: 'יותר מדי בקשות — נסה שוב בעוד רגע' });
+    }
+
     const tenant = await resolveWidgetTenant(req.body?.key);
     if (!tenant) return res.status(404).json({ error: 'widget not found' });
     const visitorId = cleanVisitorId(req.body?.visitorId);
     if (!visitorId) return res.status(400).json({ error: 'bad visitor' });
 
     const existing = await prisma.lead.findFirst({ where: { tenantId: tenant.id, channel: 'WEBCHAT', externalId: visitorId } });
+    if (!existing) {
+      // New visitor → this creates a lead: enforce the tenant plan's lead cap (the
+      // authenticated routes enforce it via checkLimit; the public widget must too).
+      const maxLeads = entitlementsFor(tenant.plan).maxLeads;
+      if (Number.isFinite(maxLeads)) {
+        const used = await prisma.lead.count({ where: { tenantId: tenant.id } });
+        if (used >= (maxLeads as number)) return res.status(404).json({ error: 'widget not found' });
+      }
+    }
     const name = String(req.body?.name ?? '').trim().slice(0, 80) || existing?.name || 'אורח מהאתר';
     const phoneNote = String(req.body?.phone ?? '').replace(/[^\d+]/g, '').slice(0, 20);
 
@@ -113,8 +131,10 @@ widgetRouter.post('/message', async (req: Request, res: Response) => {
     const visitorId = cleanVisitorId(req.body?.visitorId);
     if (!visitorId) return res.status(400).json({ error: 'bad visitor' });
 
-    const rlKey = `${req.ip ?? 'ip'}|${visitorId}`;
-    if (rateLimited(rlKey)) return res.status(429).json({ error: 'שלחת יותר מדי הודעות — נסה שוב בעוד רגע' });
+    // Two layers: per-visitor (10/min — a human chatting) and per-IP regardless of
+    // visitorId (30/min — rotating visitorIds must not bypass the limit).
+    if (rateLimited(`${req.ip ?? 'ip'}|${visitorId}`)) return res.status(429).json({ error: 'שלחת יותר מדי הודעות — נסה שוב בעוד רגע' });
+    if (rateLimited(`msg|${req.ip ?? 'ip'}`, 30, 60_000)) return res.status(429).json({ error: 'שלחת יותר מדי הודעות — נסה שוב בעוד רגע' });
 
     const content = String(req.body?.content ?? '').trim().slice(0, 4000);
     if (!content) return res.status(400).json({ error: 'empty' });

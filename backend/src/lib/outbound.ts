@@ -66,22 +66,30 @@ export async function sendOutboundText(
   const result = opts.paced ? await paced(lineKeyFor(lead), doSend) : await doSend();
   if (!result.success) return { ok: false, error: result.error || 'שליחה נכשלה' };
 
-  const message = await prisma.message.create({
-    data: {
-      tenantId, leadId, content, type: 'text',
-      direction: 'outbound', status: 'sent',
-      externalId: result.messageId ?? null,
-    },
-  });
-  await prisma.lead.update({
-    where: { id: leadId },
-    data: { lastMessageAt: new Date(), ...(opts.markAutoReply ? { lastAutoReplyAt: new Date() } : {}) },
-  });
+  // From here the message HAS left via the provider. Bookkeeping failures must not
+  // throw — a caller (job runner) that retries on throw would send the customer the
+  // same message again. Log + report ok instead.
+  try {
+    const message = await prisma.message.create({
+      data: {
+        tenantId, leadId, content, type: 'text',
+        direction: 'outbound', status: 'sent',
+        externalId: result.messageId ?? null,
+      },
+    });
+    await prisma.lead.update({
+      where: { id: leadId },
+      data: { lastMessageAt: new Date(), ...(opts.markAutoReply ? { lastAutoReplyAt: new Date() } : {}) },
+    });
 
-  if (emit) {
-    const io = getIo();
-    if (io) emitScoped(io, tenantId, lead.assignedTo, SOCKET_EVENTS.NEW_MESSAGE, message);
+    if (emit) {
+      const io = getIo();
+      if (io) emitScoped(io, tenantId, lead.assignedTo, SOCKET_EVENTS.NEW_MESSAGE, message);
+    }
+
+    return { ok: true, messageId: message.id, externalId: result.messageId };
+  } catch (err) {
+    console.error(`⚠️ outbound bookkeeping failed AFTER provider send (lead ${leadId}) — message went out but wasn't recorded:`, (err as Error).message);
+    return { ok: true, externalId: result.messageId };
   }
-
-  return { ok: true, messageId: message.id, externalId: result.messageId };
 }

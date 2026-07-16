@@ -2,6 +2,7 @@ import 'dotenv/config';
 import express from 'express';
 import http from 'http';
 import cors from 'cors';
+import helmet from 'helmet';
 import { Server as SocketIOServer } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import { leadsRouter } from './routes/leads';
@@ -22,6 +23,7 @@ import { pushRouter } from './routes/push';
 import { campaignsRouter } from './routes/campaigns';
 import { WIDGET_JS } from './lib/widgetScript';
 import { startJobRunner, stopJobRunner } from './lib/jobs';
+import { ensureWebhookSecrets } from './lib/webhookSecrets';
 import { requireAuth } from './middleware/auth';
 import { requireFeature } from './lib/entitlements';
 import { initSocket, agentRoom } from './socket';
@@ -33,6 +35,17 @@ validateEnv();
 
 const app = express();
 const httpServer = http.createServer(app);
+
+// Railway terminates TLS at a single proxy hop — trust it so req.ip is the real
+// client address (the widget/auth rate limiters key on it; without this every
+// caller shared the proxy's IP and per-IP limits were meaningless).
+app.set('trust proxy', 1);
+
+// Security headers. CORP is disabled globally: widget.js is intentionally loaded
+// cross-origin by customer sites, and the API itself serves no embeddable documents
+// the header would protect. Everything else keeps helmet's defaults (nosniff, HSTS,
+// frameguard, etc.).
+app.use(helmet({ crossOriginResourcePolicy: false }));
 
 // ─── CORS origin resolution ───────────────────────────────────────────────────
 // FRONTEND_URL may hold one or more comma-separated origins. We normalize away
@@ -160,6 +173,8 @@ httpServer.listen(PORT, '::', () => {
   console.log(`🚀 Server running on port ${PORT} (bound to :: / dual-stack)`);
   console.log(`🔌 Socket.io with tenant rooms enabled`);
   startJobRunner();
+  // Self-heal: mint + activate webhook secrets for legacy tenants (see lib/webhookSecrets.ts).
+  void ensureWebhookSecrets().catch((e) => console.error('webhook-secret sweep failed:', e));
 });
 
 // ─── Resilience ────────────────────────────────────────────────────────────────

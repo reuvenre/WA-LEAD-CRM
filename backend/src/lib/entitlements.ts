@@ -120,15 +120,29 @@ export async function tryBumpDailyCap(
 ): Promise<{ ok: boolean; cap: number }> {
   const cap = entitlementsFor(await planOf(tenantId)).dailyMsgCapPerLine;
   if (!line) return { ok: true, cap }; // no line yet (legacy tenant) — the tenant-level creds still send
-  const today = new Date().toISOString().slice(0, 10);
-  const lineDay = line.dailyCountDate?.toISOString().slice(0, 10) ?? null;
-  const countToday = lineDay === today ? line.dailyCount : 0;
-  if (countToday >= cap) return { ok: false, cap };
-  await prisma.line.update({
-    where: { id: line.id },
-    data: { dailyCount: lineDay === today ? { increment: 1 } : 1, dailyCountDate: new Date() },
-  });
-  return { ok: true, cap };
+  // Single conditional UPDATE — check + bump must be one atomic statement. The old
+  // read-then-increment let N concurrent senders all pass at cap-1 and overshoot the
+  // anti-ban cap by the concurrency factor. Day comparison is by UTC date (matches
+  // the campaign engine's resume-at-UTC-midnight scheduling).
+  // Note: Prisma stores DateTime as a NAIVE timestamp holding UTC, so ::date on the
+  // column is already the UTC date; now() is timestamptz and needs the explicit shift.
+  const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+    UPDATE "Line" SET
+      "dailyCount" = CASE
+        WHEN "dailyCountDate" IS NOT NULL AND "dailyCountDate"::date = (now() AT TIME ZONE 'UTC')::date
+          THEN "dailyCount" + 1
+        ELSE 1
+      END,
+      "dailyCountDate" = (now() AT TIME ZONE 'UTC')
+    WHERE id = ${line.id}
+      AND (
+        "dailyCountDate" IS NULL
+        OR "dailyCountDate"::date <> (now() AT TIME ZONE 'UTC')::date
+        OR "dailyCount" < ${cap}
+      )
+    RETURNING id
+  `;
+  return { ok: rows.length === 1, cap };
 }
 
 // Express wrapper: call right before an outbound send from a route handler.

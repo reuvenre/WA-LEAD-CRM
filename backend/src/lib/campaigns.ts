@@ -4,7 +4,7 @@
 // (pausing until the next day when the cap is hit, then resuming automatically).
 
 import { prisma } from './prisma';
-import { registerJobHandler, enqueueJob, type ClaimedJob } from './jobs';
+import { registerJobHandler, enqueueJob, setJobPayload, cancelPendingJobs, type ClaimedJob } from './jobs';
 import { sendOutboundText } from './outbound';
 import { tryBumpDailyCap } from './entitlements';
 import { paced, lineKeyFor } from './sendQueue';
@@ -30,15 +30,17 @@ export interface CampaignFilter {
   channel?: string;        // defaults to WHATSAPP (the broadcast-able channel)
 }
 
-// Prisma `where` for a campaign audience: matches the filter, excludes opted-out
-// leads, and requires a phone (only reachable WhatsApp leads are broadcast targets).
+// Prisma `where` for a campaign audience: matches the filter and excludes opted-out
+// leads. WhatsApp targets must have a phone; other channels (WEBCHAT) deliver without
+// one — requiring a phone there made every non-WhatsApp audience silently empty.
 export function audienceWhere(tenantId: string, filter: CampaignFilter | null | undefined) {
   const f = filter ?? {};
+  const channel = (f.channel as Prisma.EnumLeadChannelFilter['equals']) ?? 'WHATSAPP';
   const where: Prisma.LeadWhereInput = {
     tenantId,
     optedOut: false,
-    phone: { not: null },
-    channel: (f.channel as Prisma.EnumLeadChannelFilter['equals']) ?? 'WHATSAPP',
+    channel,
+    ...(channel === 'WHATSAPP' ? { phone: { not: null } } : {}),
   };
   if (f.status && f.status !== 'all') where.status = f.status as Prisma.EnumLeadStatusFilter['equals'];
   if (f.tags && f.tags.length) where.tags = { hasSome: f.tags };
@@ -63,6 +65,43 @@ const GAP_MS = () => 4000 + Math.floor(Math.random() * 5000); // 4–9s between 
 
 function reenqueue(tenantId: string, campaignId: string, at: Date) {
   return enqueueJob(tenantId, 'campaign_send', at, { campaignId });
+}
+
+// The daily cap resets when the UTC date rolls over (entitlements counts by UTC date),
+// so cap-paused work resumes shortly after UTC midnight — NOT server-local midnight,
+// which is only the same thing while the container happens to run with TZ=UTC.
+function nextUtcMidnight(): Date {
+  const next = new Date();
+  next.setUTCHours(24, 5, 0, 0);
+  return next;
+}
+
+// Atomically claim ONE pending recipient (pending → sending). The claim is what makes
+// a duplicated send chain, or a job retry after a mid-send crash, unable to pick the
+// same recipient twice. Returns null when no pending recipient could be claimed.
+async function claimNextRecipient(campaignId: string): Promise<{ id: string; leadId: string } | null> {
+  // Stale 'sending' rows (claimed, then the process died before resolving) are
+  // resolved as sent-unconfirmed rather than re-sent: for marketing bulk the safe
+  // failure mode is at-most-once — never spam a customer twice.
+  await prisma.campaignRecipient.updateMany({
+    where: { campaignId, status: 'sending', updatedAt: { lt: new Date(Date.now() - 8 * 60_000) } },
+    data: { status: 'sent', error: 'נשלח ללא אישור (שחזור לאחר קריסה)' },
+  });
+
+  for (let i = 0; i < 5; i++) {
+    const rec = await prisma.campaignRecipient.findFirst({
+      where: { campaignId, status: 'pending' },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true, leadId: true },
+    });
+    if (!rec) return null;
+    const claimed = await prisma.campaignRecipient.updateMany({
+      where: { id: rec.id, status: 'pending' },
+      data: { status: 'sending' },
+    });
+    if (claimed.count === 1) return rec; // someone else grabbed it → next candidate
+  }
+  return null;
 }
 
 // Materialize the audience into CampaignRecipient rows and kick off sending (or schedule).
@@ -107,17 +146,20 @@ registerJobHandler('campaign_send', async (payload: unknown, job: ClaimedJob) =>
   const { campaignId } = (payload ?? {}) as { campaignId?: string };
   if (!campaignId) return;
 
+  // Collapse duplicate chains: a cap-paused job left queued through a pause/resume
+  // cycle (or a double /send race) would otherwise walk the audience in parallel
+  // with this chain — doubling the send rate and double-sending recipients.
+  await cancelPendingJobs(job.tenantId, 'campaign_send', 'campaignId', campaignId);
+
   const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, tenantId: job.tenantId } });
   if (!campaign) return;                          // deleted → stop
   if (campaign.status === 'paused' || campaign.status === 'done') return; // stop
+  if (parseSteps(campaign.steps).length > 0) return; // drip — never walked by the broadcast chain
   if (campaign.status === 'scheduled') {
     await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'running' } });
   }
 
-  const rec = await prisma.campaignRecipient.findFirst({
-    where: { campaignId, status: 'pending' },
-    orderBy: { createdAt: 'asc' },
-  });
+  const rec = await claimNextRecipient(campaignId);
   if (!rec) { // audience drained
     await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'done' } });
     return;
@@ -128,22 +170,26 @@ registerJobHandler('campaign_send', async (payload: unknown, job: ClaimedJob) =>
   // Skip cases advance to the next recipient immediately (no send).
   if (!lead) {
     await prisma.campaignRecipient.update({ where: { id: rec.id }, data: { status: 'skipped', error: 'lead deleted' } });
-    return void reenqueue(job.tenantId, campaignId, new Date());
+    await reenqueue(job.tenantId, campaignId, new Date());
+    return;
   }
   if (lead.optedOut) {
     await prisma.campaignRecipient.update({ where: { id: rec.id }, data: { status: 'skipped', error: 'opted out' } });
-    return void reenqueue(job.tenantId, campaignId, new Date());
+    await reenqueue(job.tenantId, campaignId, new Date());
+    return;
   }
 
-  // Daily anti-ban cap: if hit, pause until just after midnight (cap resets by date)
-  // and leave this recipient pending — the campaign resumes automatically tomorrow.
+  // Daily anti-ban cap: if hit, release the claim and pause until just after UTC
+  // midnight (when the cap resets) — the campaign resumes automatically tomorrow.
   const cap = await tryBumpDailyCap(job.tenantId, lead.line);
   if (!cap.ok) {
-    const next = new Date(); next.setHours(24, 5, 0, 0);
-    return void reenqueue(job.tenantId, campaignId, next);
+    await prisma.campaignRecipient.updateMany({ where: { id: rec.id, status: 'sending' }, data: { status: 'pending' } });
+    await reenqueue(job.tenantId, campaignId, nextUtcMidnight());
+    return;
   }
 
-  // Cap already consumed above → don't double-count.
+  // Cap already consumed above → don't double-count. sendOutboundText never throws
+  // once the provider accepted the message, so a job retry can't re-send.
   const text = renderCampaignText(campaign.body, lead);
   const result = await sendOutboundText(job.tenantId, rec.leadId, text, { enforceDailyCap: false });
   await prisma.campaignRecipient.update({
@@ -160,11 +206,22 @@ registerJobHandler('campaign_send', async (payload: unknown, job: ClaimedJob) =>
 // Each recipient has its own chain. The sequence stops early if the lead replies
 // (the whole point of a drip) or opts out.
 registerJobHandler('drip_step', async (payload: unknown, job: ClaimedJob) => {
-  const { campaignId, leadId, stepIndex } = (payload ?? {}) as { campaignId?: string; leadId?: string; stepIndex?: number };
+  const p = (payload ?? {}) as { campaignId?: string; leadId?: string; stepIndex?: number; sent?: boolean };
+  const { campaignId, leadId, stepIndex } = p;
   if (!campaignId || !leadId || typeof stepIndex !== 'number') return;
 
   const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, tenantId: job.tenantId } });
-  if (!campaign || campaign.status === 'paused' || campaign.status === 'done') return;
+  if (!campaign || campaign.status === 'done') return;
+  // Paused → SNOOZE, don't die. Killing the chain here made pause permanent: after
+  // resume nothing ever rescheduled the per-recipient jobs, so every sequence that
+  // came due during the pause was silently lost.
+  if (campaign.status === 'paused') {
+    await enqueueJob(job.tenantId, 'drip_step', new Date(Date.now() + 15 * 60_000), { campaignId, leadId, stepIndex });
+    return;
+  }
+  if (campaign.status === 'scheduled') {
+    await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'running' } });
+  }
 
   const steps = parseSteps(campaign.steps);
   const step = steps[stepIndex];
@@ -172,6 +229,35 @@ registerJobHandler('drip_step', async (payload: unknown, job: ClaimedJob) => {
 
   const rec = await prisma.campaignRecipient.findFirst({ where: { campaignId, leadId } });
   if (!rec) return;
+
+  // finishStep runs the post-send bookkeeping + next-step scheduling; shared with the
+  // crash-retry path below so a retried job still advances the sequence.
+  const finishStep = async (data: { status: string; messageId?: string | null; error?: string | null }) => {
+    await prisma.campaignRecipient.update({ where: { id: rec.id }, data });
+    const next = steps[stepIndex + 1];
+    if (next) {
+      const at = new Date(Date.now() + next.afterHours * 3_600_000 + JITTER_MS());
+      await enqueueJob(job.tenantId, 'drip_step', at, { campaignId, leadId, stepIndex: stepIndex + 1 });
+    } else {
+      // Last step for this recipient — if no other recipient still has a queued step,
+      // the whole drip is finished (a drip never went 'done' before, so the UI showed
+      // it as active forever and pause/send stayed enabled on a finished campaign).
+      const remaining = await prisma.job.count({
+        where: { tenantId: job.tenantId, type: 'drip_step', status: { in: ['pending', 'running'] }, payload: { path: ['campaignId'], equals: campaignId } },
+      });
+      if (remaining <= 1) { // ourselves — we're still 'running'
+        await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'done' } });
+      }
+    }
+  };
+
+  // Crash-retry idempotency: the payload is stamped { sent: true } right before the
+  // provider call. A retry that sees the stamp must NOT send again — it only finishes
+  // the bookkeeping the crash interrupted.
+  if (p.sent) {
+    await finishStep({ status: 'sent', error: 'נשלח ללא אישור (שחזור לאחר קריסה)' });
+    return;
+  }
 
   const lead = await prisma.lead.findFirst({ where: { id: leadId, tenantId: job.tenantId }, include: { line: true } });
   if (!lead) {
@@ -193,28 +279,21 @@ registerJobHandler('drip_step', async (payload: unknown, job: ClaimedJob) => {
     return;
   }
 
-  // Daily cap → retry this step after midnight rather than dropping it.
+  // Daily cap → retry this step just after UTC midnight (when the cap resets)
+  // rather than dropping it.
   const cap = await tryBumpDailyCap(job.tenantId, lead.line);
   if (!cap.ok) {
-    const next = new Date(); next.setHours(24, 5, 0, 0);
-    await enqueueJob(job.tenantId, 'drip_step', next, { campaignId, leadId, stepIndex });
+    await enqueueJob(job.tenantId, 'drip_step', nextUtcMidnight(), { campaignId, leadId, stepIndex });
     return;
   }
 
   // Pace per line: several recipients' steps can come due together, so serialize.
+  await setJobPayload(job.id, { campaignId, leadId, stepIndex, sent: true });
   const text = renderCampaignText(step.body, lead);
   const result = await paced(lineKeyFor(lead), () => sendOutboundText(job.tenantId, leadId, text, { enforceDailyCap: false }));
-  await prisma.campaignRecipient.update({
-    where: { id: rec.id },
-    data: result.ok
+  await finishStep(
+    result.ok
       ? { status: 'sent', messageId: result.externalId ?? null, error: null }
       : { status: 'failed', error: (result.error ?? 'send failed').slice(0, 300) },
-  });
-
-  // Queue the next step for this recipient.
-  const next = steps[stepIndex + 1];
-  if (next) {
-    const at = new Date(Date.now() + next.afterHours * 3_600_000 + JITTER_MS());
-    await enqueueJob(job.tenantId, 'drip_step', at, { campaignId, leadId, stepIndex: stepIndex + 1 });
-  }
+  );
 });

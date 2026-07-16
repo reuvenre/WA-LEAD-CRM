@@ -13,32 +13,34 @@ import { entitlementsFor } from './entitlements';
  * active agents (→ lead stays unassigned = managers-only, as before).
  */
 export async function pickRoundRobinAssignee(tenantId: string): Promise<string | null> {
-  return prisma.$transaction(async (tx) => {
-    const tenant = await tx.tenant.findUnique({
-      where: { id: tenantId },
-      select: { assignmentMode: true, assignmentPointer: true, plan: true },
-    });
-    if (!tenant || tenant.assignmentMode !== 'round_robin') return null;
-    // A downgrade may leave the mode set — honour the plan gate at fire time.
-    if (!entitlementsFor(tenant.plan).features.roundRobin) return null;
-
-    // Stable ordering so the pointer maps to a consistent agent across calls.
-    const agents = await tx.user.findMany({
-      where: { tenantId, role: 'AGENT', active: true },
-      select: { username: true },
-      orderBy: { createdAt: 'asc' },
-    });
-    if (agents.length === 0) return null;
-
-    const idx = tenant.assignmentPointer % agents.length;
-    const chosen = agents[idx].username;
-
-    // Advance (bounded so it never overflows int over years of leads).
-    await tx.tenant.update({
-      where: { id: tenantId },
-      data: { assignmentPointer: (tenant.assignmentPointer + 1) % 1_000_000 },
-    });
-
-    return chosen;
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: tenantId },
+    select: { assignmentMode: true, plan: true },
   });
+  if (!tenant || tenant.assignmentMode !== 'round_robin') return null;
+  // A downgrade may leave the mode set — honour the plan gate at fire time.
+  if (!entitlementsFor(tenant.plan).features.roundRobin) return null;
+
+  // Stable ordering so the pointer maps to a consistent agent across calls.
+  const agents = await prisma.user.findMany({
+    where: { tenantId, role: 'AGENT', active: true },
+    select: { username: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  if (agents.length === 0) return null;
+
+  // Advance-and-read in ONE statement. The previous read-then-update transaction ran
+  // at Read Committed without a row lock, so two concurrent inbound leads could read
+  // the same pointer → same agent twice + a skipped agent. The atomic increment gives
+  // every caller a distinct value. (Bounded so it never overflows int.)
+  const rows = await prisma.$queryRaw<Array<{ assignmentPointer: number }>>`
+    UPDATE "Tenant"
+    SET "assignmentPointer" = ("assignmentPointer" + 1) % 1000000
+    WHERE id = ${tenantId}
+    RETURNING "assignmentPointer"
+  `;
+  if (rows.length === 0) return null;
+  // RETURNING gives the post-increment value; the slot we own is the one before it.
+  const slot = (rows[0].assignmentPointer + 1_000_000 - 1) % 1_000_000;
+  return agents[slot % agents.length].username;
 }

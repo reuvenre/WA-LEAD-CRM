@@ -40,6 +40,18 @@ tenantRouter.get('/settings', async (req: Request, res: Response) => {
     },
   });
   if (!tenant) return res.status(404).json({ error: 'Tenant not found' });
+
+  const isMgr = MANAGER_ROLES.includes(req.user!.role);
+  // Agents get only what their UI needs (custom-field definitions, plan, identity).
+  // The Green API instanceId + webhook wiring stay manager-only: the instanceId is
+  // half of the webhook-forgery equation, and agents have no settings screen anyway.
+  if (!isMgr) {
+    return res.json({
+      id: tenant.id, name: tenant.name, email: tenant.email, plan: tenant.plan,
+      active: tenant.active, attributeDefs: tenant.attributeDefs, createdAt: tenant.createdAt,
+    });
+  }
+
   const { greenApiToken, greenApiWebhookUrl, ...safe } = tenant;
   return res.json({
     ...safe,
@@ -216,6 +228,7 @@ tenantRouter.patch('/green-api', async (req: Request, res: Response) => {
 // Green API's getStateInstance. Returns the instance state so the UI can tell the
 // user whether the device is authorized and ready to send.
 tenantRouter.post('/green-api/test', async (req: Request, res: Response) => {
+  if (!requireTenantManager(req, res)) return; // settings screen is manager-only
   const instanceId = String(req.body?.greenApiInstanceId ?? '').trim();
   const token = String(req.body?.greenApiToken ?? '').trim();
 
@@ -291,6 +304,9 @@ tenantRouter.patch('/widget', async (req: Request, res: Response) => {
 
 // GET /api/tenant/users — list users in this tenant
 tenantRouter.get('/users', async (req: Request, res: Response) => {
+  // The full roster (roles + active flags) is management data — agents don't need it
+  // (they can't assign leads) and it mapped the org for anyone with an agent login.
+  if (!requireTenantManager(req, res)) return;
   const users = await prisma.user.findMany({
     where: { tenantId: req.user!.tenantId },
     select: { id: true, username: true, role: true, active: true, createdAt: true },

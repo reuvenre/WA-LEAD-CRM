@@ -3,6 +3,7 @@ import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { isManager } from '../middleware/auth';
 import { audienceWhere, startCampaign, parseSteps, type CampaignFilter } from '../lib/campaigns';
+import { enqueueJob, cancelPendingJobs } from '../lib/jobs';
 
 export const campaignsRouter = Router();
 
@@ -14,7 +15,8 @@ campaignsRouter.use((req: Request, res: Response, next) => {
 
 async function statsFor(campaignId: string) {
   const rows = await prisma.campaignRecipient.groupBy({ by: ['status'], where: { campaignId }, _count: { status: true } });
-  const s: Record<string, number> = { pending: 0, sent: 0, delivered: 0, read: 0, failed: 0, skipped: 0 };
+  // 'sending' = claimed by the engine this instant (transient, <1 tick).
+  const s: Record<string, number> = { pending: 0, sending: 0, sent: 0, delivered: 0, read: 0, failed: 0, skipped: 0 };
   let total = 0;
   for (const r of rows) { s[r.status] = r._count.status; total += r._count.status; }
   return { ...s, total };
@@ -97,7 +99,9 @@ campaignsRouter.post('/:id/send', async (req: Request, res: Response) => {
   const tenantId = req.user!.tenantId;
   const campaign = await prisma.campaign.findFirst({ where: { id: req.params.id, tenantId } });
   if (!campaign) return res.status(404).json({ error: 'קמפיין לא נמצא' });
-  if (!['draft', 'paused'].includes(campaign.status)) return res.status(400).json({ error: 'הקמפיין כבר רץ או הסתיים' });
+  // Draft only. Re-materializing a PAUSED campaign double-enrolled drip recipients
+  // whose step-0 job was still snoozing — paused campaigns continue via /resume.
+  if (campaign.status !== 'draft') return res.status(400).json({ error: 'הקמפיין כבר שוגר — קמפיין מושהה ממשיכים דרך "המשך"' });
   // A campaign is either a one-shot broadcast (body) or a drip sequence (steps).
   if (!campaign.body.trim() && parseSteps(campaign.steps).length === 0) {
     return res.status(400).json({ error: 'אין תוכן להודעה' });
@@ -114,6 +118,11 @@ campaignsRouter.post('/:id/pause', async (req: Request, res: Response) => {
   if (!campaign) return res.status(404).json({ error: 'קמפיין לא נמצא' });
   if (!['running', 'scheduled'].includes(campaign.status)) return res.status(400).json({ error: 'הקמפיין אינו פעיל' });
   await prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'paused' } });
+  // Kill the queued broadcast chain job (e.g. one parked until after midnight by the
+  // daily cap) — otherwise it revives alongside a /resume chain and both walk the
+  // audience in parallel. Drip step jobs stay queued: the handler snoozes them while
+  // paused, preserving each recipient's place in the sequence.
+  await cancelPendingJobs(tenantId, 'campaign_send', 'campaignId', campaign.id);
   return res.json({ success: true });
 });
 
@@ -123,7 +132,14 @@ campaignsRouter.post('/:id/resume', async (req: Request, res: Response) => {
   if (!campaign) return res.status(404).json({ error: 'קמפיין לא נמצא' });
   if (campaign.status !== 'paused') return res.status(400).json({ error: 'רק קמפיין מושהה ניתן להמשך' });
   await prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'running' } });
-  const { enqueueJob } = await import('../lib/jobs');
+  if (parseSteps(campaign.steps).length > 0) {
+    // Drip: the per-recipient step jobs kept snoozing during the pause and pick up
+    // within ~15 minutes on their own. Enqueuing a campaign_send here would run the
+    // BROADCAST handler over a drip (its body is empty → blank messages).
+    return res.json({ success: true, resumesWithin: '15m' });
+  }
+  // Broadcast: exactly one chain — drop any leftover queued job before re-arming.
+  await cancelPendingJobs(tenantId, 'campaign_send', 'campaignId', campaign.id);
   await enqueueJob(tenantId, 'campaign_send', new Date(), { campaignId: campaign.id });
   return res.json({ success: true });
 });

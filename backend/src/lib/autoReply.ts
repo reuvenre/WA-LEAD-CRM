@@ -41,11 +41,30 @@ export function isOffHours(cfg: NonNullable<AutoReplyConfig['offHours']>, now: D
   if (!Array.isArray(cfg.days) || !cfg.days.includes(day)) return true;
   const [fromH, fromM] = (cfg.from || '09:00').split(':').map(Number);
   const [toH, toM] = (cfg.to || '18:00').split(':').map(Number);
-  return minutes < fromH * 60 + fromM || minutes >= toH * 60 + toM;
+  const fromTot = fromH * 60 + fromM;
+  const toTot = toH * 60 + toM;
+  // Midnight-crossing window (e.g. 20:00–02:00): open = after `from` OR before `to`.
+  // The naive `< from || >= to` check inverted the classification for such windows.
+  if (toTot <= fromTot) return !(minutes >= fromTot || minutes < toTot);
+  return minutes < fromTot || minutes >= toTot;
 }
 
 function throttled(lastAutoReplyAt: Date | null | undefined): boolean {
   return !!lastAutoReplyAt && Date.now() - new Date(lastAutoReplyAt).getTime() < THROTTLE_MS;
+}
+
+// Atomically claim the lead's auto-reply throttle window. Two near-simultaneous
+// inbound messages both used to read lastAutoReplyAt=null (the callers fire-and-
+// forget) and send two greetings; the conditional update lets exactly one through.
+async function claimThrottleWindow(leadId: string): Promise<boolean> {
+  const r = await prisma.lead.updateMany({
+    where: {
+      id: leadId,
+      OR: [{ lastAutoReplyAt: null }, { lastAutoReplyAt: { lt: new Date(Date.now() - THROTTLE_MS) } }],
+    },
+    data: { lastAutoReplyAt: new Date() },
+  });
+  return r.count === 1;
 }
 
 /**
@@ -76,13 +95,16 @@ export async function handleInboundAutoReply(args: {
     }
 
     if (text) {
+      if (!(await claimThrottleWindow(lead.id))) return; // a concurrent inbound won the race
       await sendOutboundText(tenantId, lead.id, text, { markAutoReply: true });
       return; // one auto message at a time — don't also queue an away reply
     }
 
     // No immediate reply — queue an away message that fires only if nobody responds.
+    // `since` = this inbound's time: the job checks for ANY outbound after it, so an
+    // agent reply followed by another customer message can't trigger a bogus away.
     if (cfg.away?.enabled && cfg.away.text && cfg.away.delayMin > 0) {
-      await enqueueJob(tenantId, 'away_reply', new Date(Date.now() + cfg.away.delayMin * 60_000), { leadId: lead.id });
+      await enqueueJob(tenantId, 'away_reply', new Date(Date.now() + cfg.away.delayMin * 60_000), { leadId: lead.id, since: Date.now() });
     }
   } catch (err) {
     console.warn('auto-reply failed:', (err as Error).message);
@@ -92,7 +114,7 @@ export async function handleInboundAutoReply(args: {
 // Delayed away-message: send only if no outbound has happened on the lead since the
 // inbound that scheduled this (i.e. no agent/auto reply meanwhile), and not throttled.
 registerJobHandler('away_reply', async (payload: unknown, job: ClaimedJob) => {
-  const { leadId } = (payload ?? {}) as { leadId?: string };
+  const { leadId, since } = (payload ?? {}) as { leadId?: string; since?: number };
   if (!leadId) return;
 
   const tenant = await prisma.tenant.findUnique({ where: { id: job.tenantId }, select: { autoReplies: true, plan: true } });
@@ -106,13 +128,19 @@ registerJobHandler('away_reply', async (payload: unknown, job: ClaimedJob) => {
   });
   if (!lead || throttled(lead.lastAutoReplyAt)) return;
 
-  // If the most recent message is outbound, someone already responded → stay quiet.
-  const last = await prisma.message.findFirst({
-    where: { leadId, tenantId: job.tenantId },
+  // ANY outbound since the inbound that scheduled this = the conversation is being
+  // handled → stay quiet. Checking only the very LAST message fired a bogus "we'll
+  // get back to you" into live conversations whenever the customer spoke last.
+  const answered = await prisma.message.findFirst({
+    where: {
+      leadId, tenantId: job.tenantId, direction: 'outbound',
+      ...(since ? { timestamp: { gt: new Date(since) } } : {}),
+    },
     orderBy: { timestamp: 'desc' },
-    select: { direction: true },
+    select: { id: true },
   });
-  if (last?.direction === 'outbound') return;
+  if (answered) return;
 
+  if (!(await claimThrottleWindow(leadId))) return; // another auto-reply beat us to it
   await sendOutboundText(job.tenantId, leadId, cfg.away.text, { markAutoReply: true });
 });

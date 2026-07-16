@@ -14,13 +14,24 @@ export const WIDGET_JS = String.raw`(function () {
   var VKEY = 'wa_widget_visitor';
   var visitorId = localStorage.getItem(VKEY);
   if (!visitorId) {
-    visitorId = 'v_' + ((window.crypto && crypto.randomUUID) ? crypto.randomUUID().replace(/-/g, '')
-      : (Date.now().toString(36) + Math.random().toString(36).slice(2)));
+    // The visitorId is a bearer identifier for this visitor's transcript — always
+    // derive it from a CSPRNG (getRandomValues fallback covers pre-randomUUID browsers).
+    if (window.crypto && crypto.randomUUID) {
+      visitorId = 'v_' + crypto.randomUUID().replace(/-/g, '');
+    } else if (window.crypto && crypto.getRandomValues) {
+      var buf = new Uint8Array(16); crypto.getRandomValues(buf);
+      visitorId = 'v_' + Array.prototype.map.call(buf, function (b) { return ('0' + b.toString(16)).slice(-2); }).join('');
+    } else {
+      visitorId = 'v_' + (Date.now().toString(36) + Math.random().toString(36).slice(2) + Math.random().toString(36).slice(2));
+    }
     localStorage.setItem(VKEY, visitorId);
   }
 
   var config = { title: 'צ׳אט', greeting: '', color: '#25D366' };
-  var ready = false, open = false, lastTs = null, pollTimer = null, seen = {};
+  // lastTs (the poll cursor) is advanced ONLY from server-supplied timestamps: the
+  // visitor's clock may be minutes off, and a locally-stamped cursor either hides
+  // agent replies (fast clock) or duplicates messages (slow clock).
+  var ready = false, open = false, lastTs = null, pollTimer = null, seen = {}, pendingEcho = {};
 
   function api(path, opts) {
     return fetch(BASE + '/api/widget' + path, Object.assign({ headers: { 'Content-Type': 'application/json' } }, opts))
@@ -81,16 +92,27 @@ export const WIDGET_JS = String.raw`(function () {
     titleEl.textContent = config.title;
   }
 
+  function bumpCursor(ts) { if (ts && (!lastTs || ts > lastTs)) lastTs = ts; }
+
+  // Render a message. Server-sourced messages (poll / session / POST response) carry
+  // an id + server timestamp and advance the cursor; the optimistic local echo does
+  // neither (its clock-skewed timestamp must never become the cursor).
   function addMsg(m) {
-    if (m.id && seen[m.id]) return;
+    if (m.id && seen[m.id]) { bumpCursor(m.timestamp); return; }
     if (m.id) seen[m.id] = 1;
+    bumpCursor(m.id ? m.timestamp : null);
+    // The server copy of a message we just echoed locally: dedupe by content.
+    if (m.id && m.direction === 'inbound' && pendingEcho[m.content]) {
+      pendingEcho[m.content]--;
+      if (!pendingEcho[m.content]) delete pendingEcho[m.content];
+      return;
+    }
     var el = document.createElement('div');
     // From the visitor's view: their own messages are stored 'inbound'; agent = 'outbound'.
     el.className = 'msg ' + (m.direction === 'inbound' ? 'me' : 'them');
     if (m.direction === 'inbound') el.style.background = config.color;
     el.textContent = m.content;
     feed.appendChild(el);
-    if (m.timestamp && (!lastTs || m.timestamp > lastTs)) lastTs = m.timestamp;
     feed.scrollTop = feed.scrollHeight;
   }
 
@@ -116,9 +138,17 @@ export const WIDGET_JS = String.raw`(function () {
     var text = input.value.trim();
     if (!text || !ready) return;
     input.value = '';
-    addMsg({ content: text, direction: 'inbound', timestamp: new Date().toISOString() });
+    pendingEcho[text] = (pendingEcho[text] || 0) + 1;
+    addMsg({ content: text, direction: 'inbound' }); // local echo — no id, no cursor bump
     api('/message', { method: 'POST', body: JSON.stringify({ key: KEY, visitorId: visitorId, content: text }) })
-      .then(function (d) { if (d.message && d.message.id) seen[d.message.id] = 1; })
+      .then(function (d) {
+        if (d.message && d.message.id) {
+          seen[d.message.id] = 1; bumpCursor(d.message.timestamp);
+          // The POST response settles this echo — balance the counter so a later
+          // identical message isn't wrongly swallowed.
+          if (pendingEcho[text]) { pendingEcho[text]--; if (!pendingEcho[text]) delete pendingEcho[text]; }
+        }
+      })
       .catch(function () {});
   }
 

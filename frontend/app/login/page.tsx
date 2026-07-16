@@ -53,15 +53,29 @@ export default function LoginPage() {
     }
   }, [step]);
 
-  // Handle the return from "Sign in with Google" (the backend redirects here with a
-  // token, a 2FA temp token, or an error code in the query string).
+  // Handle the return from "Sign in with Google": the backend redirects with a
+  // one-time handoff code (never the token itself — a JWT in the URL would leak via
+  // history/Referer/logs) which we exchange here, or with an error code.
   useEffect(() => {
     const p = new URLSearchParams(window.location.search);
-    const token = p.get('token');
-    const tempTok = p.get('tempToken');
+    const gcode = p.get('gcode');
     const gErr = p.get('googleError');
-    if (token) { localStorage.setItem('crm_token', token); router.replace('/'); return; }
-    if (tempTok) { setTempToken(tempTok); setStep('2fa'); window.history.replaceState({}, '', '/login'); return; }
+    if (gcode) {
+      window.history.replaceState({}, '', '/login');
+      fetch(`${API}/api/auth/google/exchange`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code: gcode }),
+      })
+        .then((r) => r.json().then((d: { token?: string; tempToken?: string; error?: string }) => ({ ok: r.ok, d })))
+        .then(({ ok, d }) => {
+          if (ok && d.token) { localStorage.setItem('crm_token', d.token); router.replace('/'); return; }
+          if (ok && d.tempToken) { setTempToken(d.tempToken); setStep('2fa'); return; }
+          setError(d.error ?? 'ההתחברות עם גוגל נכשלה — נסה שוב');
+        })
+        .catch(() => setError('לא ניתן להתחבר לשרת'));
+      return;
+    }
     if (gErr) {
       const msgs: Record<string, string> = {
         not_linked: 'חשבון הגוגל אינו מקושר. התחבר רגיל פעם אחת וקשר אותו בהגדרות.',
@@ -254,7 +268,7 @@ export default function LoginPage() {
                     <input
                       type={showPassword ? 'text' : 'password'} value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="הזן סיסמה..." name="password" id="current-password" autoComplete="current-password" dir="ltr"
+                      placeholder="הזן סיסמה..." name="password" id="password" autoComplete="current-password" dir="ltr"
                       className={inputCls + ' pr-9 pl-10'}
                     />
                     <button type="button" onClick={() => setShowPassword((v) => !v)}

@@ -13,12 +13,15 @@ import { tryCaptureCsatAnswer } from '../lib/csat';
 
 export const webhookRouter = Router();
 
-// Verify the shared secret embedded in the webhook URL (?token=…). Once a tenant has
-// a secret, forged payloads (from anyone who merely knows the numeric instanceId) are
-// rejected. Legacy tenants without a secret are allowed for backward-compat until they
-// re-save Green API settings (which mints + activates the secret). Constant-time compare.
+// Verify the shared secret embedded in the webhook URL (?token=…). Forged payloads
+// (from anyone who merely knows the numeric instanceId) are rejected. A tenant with
+// no secret is REJECTED too — the old allow-when-null fallback let an attacker inject
+// inbound messages, flip opt-outs and poison CSAT for any legacy tenant. Secrets are
+// self-healed at boot (lib/webhookSecrets.ts) and minted on every Green API settings
+// save, so a null secret here means provisioning failed — fail closed, log loudly.
+// Constant-time compare.
 function webhookAuthorized(req: Request, secret: string | null): boolean {
-  if (!secret) return true; // not yet configured — don't break the live webhook
+  if (!secret) return false; // fail closed — see ensureWebhookSecrets()
   const provided = String(req.query.token ?? '');
   const a = Buffer.from(provided);
   const b = Buffer.from(secret);

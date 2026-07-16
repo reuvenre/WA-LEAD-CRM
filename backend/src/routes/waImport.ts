@@ -139,13 +139,29 @@ waImportRouter.post('/history/:leadId', async (req: Request, res: Response) => {
     }
 
     // Dedup against what we already have for this lead: by provider id where present,
-    // and by (content|timestamp) for older messages that predate externalId tracking.
+    // and — for stored rows that predate externalId tracking — by a fuzzy
+    // (content, direction, timestamp±10min) match. Legacy rows were stamped at
+    // INGESTION time (webhook arrival), not WhatsApp's own send time, so an exact
+    // timestamp equality never matched and every legacy message re-imported as a
+    // duplicate bubble.
     const existing = await prisma.message.findMany({
       where: { leadId, tenantId },
-      select: { externalId: true, content: true, timestamp: true },
+      select: { externalId: true, content: true, direction: true, timestamp: true },
     });
     const seenIds = new Set(existing.map((m) => m.externalId).filter(Boolean) as string[]);
-    const seenFallback = new Set(existing.map((m) => `${m.content}|${m.timestamp.getTime()}`));
+    const FUZZ_MS = 10 * 60_000;
+    const legacyByKey = new Map<string, number[]>(); // content|direction → timestamps (rows w/o externalId)
+    for (const m of existing) {
+      if (m.externalId) continue;
+      const k = `${m.content}|${m.direction}`;
+      const arr = legacyByKey.get(k) ?? [];
+      arr.push(m.timestamp.getTime());
+      legacyByKey.set(k, arr);
+    }
+    const matchesLegacy = (content: string, direction: string, ts: Date): boolean => {
+      const arr = legacyByKey.get(`${content}|${direction}`);
+      return !!arr && arr.some((t) => Math.abs(t - ts.getTime()) <= FUZZ_MS);
+    };
 
     let imported = 0;
     let newest: Date | null = null;
@@ -153,8 +169,7 @@ waImportRouter.post('/history/:leadId', async (req: Request, res: Response) => {
     // Green API returns newest-first; insert oldest-first so timestamps read naturally.
     for (const msg of [...result.messages].reverse()) {
       if (msg.externalId && seenIds.has(msg.externalId)) continue;
-      const fallbackKey = `${msg.content}|${msg.timestamp.getTime()}`;
-      if (!msg.externalId && seenFallback.has(fallbackKey)) continue;
+      if (matchesLegacy(msg.content, msg.direction, msg.timestamp)) continue;
 
       await prisma.message.create({
         data: {
@@ -170,8 +185,15 @@ waImportRouter.post('/history/:leadId', async (req: Request, res: Response) => {
           timestamp: msg.timestamp,
         },
       });
-      if (msg.externalId) seenIds.add(msg.externalId);
-      seenFallback.add(fallbackKey);
+      if (msg.externalId) {
+        seenIds.add(msg.externalId);
+      } else {
+        // Batch-internal dedup for id-less messages: register what we just inserted.
+        const k = `${msg.content}|${msg.direction}`;
+        const arr = legacyByKey.get(k) ?? [];
+        arr.push(msg.timestamp.getTime());
+        legacyByKey.set(k, arr);
+      }
       imported++;
       if (!newest || msg.timestamp > newest) newest = msg.timestamp;
     }
