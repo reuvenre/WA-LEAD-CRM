@@ -131,7 +131,13 @@ campaignsRouter.post('/:id/resume', async (req: Request, res: Response) => {
   const campaign = await prisma.campaign.findFirst({ where: { id: req.params.id, tenantId } });
   if (!campaign) return res.status(404).json({ error: 'קמפיין לא נמצא' });
   if (campaign.status !== 'paused') return res.status(400).json({ error: 'רק קמפיין מושהה ניתן להמשך' });
-  await prisma.campaign.update({ where: { id: campaign.id }, data: { status: 'running' } });
+
+  // A campaign paused while still scheduled for the future stays scheduled — resuming
+  // must not fire it now. Re-arm at the original send time and keep the 'scheduled' badge.
+  const future = campaign.scheduledAt && campaign.scheduledAt.getTime() > Date.now();
+  const startAt = future ? campaign.scheduledAt! : new Date();
+  await prisma.campaign.update({ where: { id: campaign.id }, data: { status: future ? 'scheduled' : 'running' } });
+
   if (parseSteps(campaign.steps).length > 0) {
     // Drip: the per-recipient step jobs kept snoozing during the pause and pick up
     // within ~15 minutes on their own. Enqueuing a campaign_send here would run the
@@ -140,7 +146,7 @@ campaignsRouter.post('/:id/resume', async (req: Request, res: Response) => {
   }
   // Broadcast: exactly one chain — drop any leftover queued job before re-arming.
   await cancelPendingJobs(tenantId, 'campaign_send', 'campaignId', campaign.id);
-  await enqueueJob(tenantId, 'campaign_send', new Date(), { campaignId: campaign.id });
+  await enqueueJob(tenantId, 'campaign_send', startAt, { campaignId: campaign.id });
   return res.json({ success: true });
 });
 

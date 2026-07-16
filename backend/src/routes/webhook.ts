@@ -47,9 +47,22 @@ async function processWebhook(req: Request, res: Response, tenantId: string, ten
         const io: SocketIOServer = req.app.get('io');
         emitScoped(io, tenantId, msg.lead?.assignedTo, SOCKET_EVENTS.MESSAGE_STATUS, { id: updated.id, leadId: updated.leadId, status: updated.status });
       }
-      // Reflect delivery/read into any campaign recipient sent with this provider id,
-      // so the campaign results screen shows delivered/read counts.
-      await prisma.campaignRecipient.updateMany({ where: { messageId: idMessage }, data: { status: newStatus } }).catch(() => {});
+      // Reflect delivery/read into this tenant's campaign recipient sent with this
+      // provider id. Prisma's updateMany can't filter on the `campaign` relation, so
+      // resolve the recipient first (include the campaign for the tenant check) — this
+      // also scopes out a provider-id collision across tenants. Only ADVANCE the status:
+      // an out-of-order 'delivered' after 'read' must not downgrade it.
+      const cr = await prisma.campaignRecipient.findFirst({
+        where: { messageId: idMessage },
+        include: { campaign: { select: { tenantId: true } } },
+      });
+      if (cr && cr.campaign.tenantId === tenantId) {
+        const cur = (['sent', 'delivered', 'read'] as const).includes(cr.status as 'sent')
+          ? rank[cr.status as 'sent' | 'delivered' | 'read'] : 0;
+        if (rank[newStatus] > cur) {
+          await prisma.campaignRecipient.update({ where: { id: cr.id }, data: { status: newStatus } }).catch(() => {});
+        }
+      }
     }
     return res.status(200).json({ received: true });
   }

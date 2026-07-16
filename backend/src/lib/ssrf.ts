@@ -25,12 +25,48 @@ function isPrivateIPv4(host: string): boolean {
   return false;
 }
 
+// Expand an IPv6 literal to its 8 hextets (numbers). Returns null if not valid IPv6.
+function expandIPv6(input: string): number[] | null {
+  const h = input.replace(/^\[/, '').replace(/\]$/, '').toLowerCase();
+  if (!h.includes(':')) return null;
+  // Split off a trailing dotted-quad (IPv4-mapped/embedded, e.g. ::ffff:127.0.0.1).
+  let tail: number[] = [];
+  let head = h;
+  const dm = h.match(/:(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})$/);
+  if (dm) {
+    const q = dm[1].split('.').map(Number);
+    if (q.some((n) => n > 255)) return null;
+    tail = [(q[0] << 8) | q[1], (q[2] << 8) | q[3]];
+    head = h.slice(0, h.length - dm[1].length); // keep the trailing ':'
+  }
+  const parts = head.split('::');
+  if (parts.length > 2) return null;
+  const toGroups = (s: string) => s ? s.split(':').filter((x) => x !== '').map((x) => parseInt(x, 16)) : [];
+  const left = toGroups(parts[0]);
+  const right = parts.length === 2 ? toGroups(parts[1]) : [];
+  const groups = parts.length === 2
+    ? [...left, ...Array(Math.max(0, 8 - left.length - right.length - tail.length)).fill(0), ...right, ...tail]
+    : [...left, ...tail];
+  if (groups.length !== 8 || groups.some((n) => Number.isNaN(n) || n < 0 || n > 0xffff)) return null;
+  return groups;
+}
+
 function isPrivateIPv6(host: string): boolean {
-  const h = host.replace(/^\[/, '').replace(/\]$/, '').toLowerCase();
-  if (h === '::1' || h === '::') return true; // loopback / unspecified
-  if (h.startsWith('fc') || h.startsWith('fd')) return true; // unique local fc00::/7
-  if (h.startsWith('fe80')) return true; // link-local
-  if (h.startsWith('::ffff:')) return isPrivateIPv4(h.slice('::ffff:'.length)); // IPv4-mapped
+  const g = expandIPv6(host);
+  if (!g) return false;
+  const h0 = g[0];
+  if (g.slice(0, 7).every((x) => x === 0) && g[7] === 1) return true; // ::1 loopback
+  if (g.every((x) => x === 0)) return true;                           // :: unspecified
+  if ((h0 & 0xfe00) === 0xfc00) return true;                          // fc00::/7 unique-local
+  if ((h0 & 0xffc0) === 0xfe80) return true;                          // fe80::/10 link-local
+  // IPv4-mapped ::ffff:0:0/96 and IPv4-compatible — re-check the embedded v4 address,
+  // regardless of whether the parser rendered it dotted or as hex hextets.
+  if (g.slice(0, 5).every((x) => x === 0) && g[5] === 0xffff) {
+    return isPrivateIPv4(`${g[6] >> 8}.${g[6] & 0xff}.${g[7] >> 8}.${g[7] & 0xff}`);
+  }
+  if (g[0] === 0x64 && g[1] === 0xff9b) { // 64:ff9b::/96 NAT64
+    return isPrivateIPv4(`${g[6] >> 8}.${g[6] & 0xff}.${g[7] >> 8}.${g[7] & 0xff}`);
+  }
   return false;
 }
 
@@ -65,7 +101,8 @@ function isPrivateAddress(addr: string): boolean {
 export async function isSafeWebhookUrlResolved(raw: string): Promise<boolean> {
   if (!isSafeWebhookUrl(raw)) return false;
   const host = new URL(raw).hostname.replace(/^\[/, '').replace(/\]$/, '');
-  // Literal IPs were already screened above — nothing to resolve.
+  // Literal IPs were already fully range-checked by isSafeWebhookUrl (both families,
+  // incl. IPv4-mapped IPv6) — nothing left to resolve.
   if (/^(\d{1,3}\.){3}\d{1,3}$/.test(host) || host.includes(':')) return true;
   try {
     const addrs = await lookup(host, { all: true, verbatim: true });

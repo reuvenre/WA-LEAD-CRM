@@ -173,6 +173,11 @@ widgetRouter.post('/message', async (req: Request, res: Response) => {
 // is an ISO timestamp cursor.
 widgetRouter.get('/messages', async (req: Request, res: Response) => {
   try {
+    // Unauthenticated + two DB queries per call; the client polls every 4s. Cap per IP
+    // so a public widgetKey can't be used to hammer the DB (90/min ≈ 4s polling ×
+    // several tabs, well clear of legitimate use).
+    if (rateLimited(`poll|${req.ip ?? 'ip'}`, 90, 60_000)) return res.status(429).json([]);
+
     const tenant = await resolveWidgetTenant(req.query?.key);
     if (!tenant) return res.status(404).json({ error: 'widget not found' });
     const visitorId = cleanVisitorId(req.query?.visitorId);

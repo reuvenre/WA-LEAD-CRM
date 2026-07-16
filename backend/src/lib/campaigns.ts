@@ -109,6 +109,19 @@ export async function startCampaign(tenantId: string, campaignId: string): Promi
   const campaign = await prisma.campaign.findFirst({ where: { id: campaignId, tenantId } });
   if (!campaign) throw new Error('campaign not found');
 
+  const scheduled = campaign.scheduledAt && campaign.scheduledAt.getTime() > Date.now();
+  const startAt = scheduled ? campaign.scheduledAt! : new Date();
+
+  // Atomically claim the draft. Two concurrent /send calls (double-click) would both
+  // pass the route's draft check and both materialize the audience — harmless for a
+  // broadcast (dedup + atomic recipient claim) but for a DRIP it enrolls every
+  // recipient twice (two step-0 chains). The conditional flip lets exactly one win.
+  const claimed = await prisma.campaign.updateMany({
+    where: { id: campaignId, status: 'draft' },
+    data: { status: scheduled ? 'scheduled' : 'running' },
+  });
+  if (claimed.count === 0) return 0; // another /send already started it
+
   const leads = await prisma.lead.findMany({
     where: audienceWhere(tenantId, campaign.filter as CampaignFilter | null),
     select: { id: true },
@@ -120,10 +133,6 @@ export async function startCampaign(tenantId: string, campaignId: string): Promi
       skipDuplicates: true,
     });
   }
-
-  const scheduled = campaign.scheduledAt && campaign.scheduledAt.getTime() > Date.now();
-  const startAt = scheduled ? campaign.scheduledAt! : new Date();
-  await prisma.campaign.update({ where: { id: campaignId }, data: { status: scheduled ? 'scheduled' : 'running' } });
 
   const steps = parseSteps(campaign.steps);
   if (steps.length > 0) {
@@ -214,9 +223,11 @@ registerJobHandler('drip_step', async (payload: unknown, job: ClaimedJob) => {
   if (!campaign || campaign.status === 'done') return;
   // Paused → SNOOZE, don't die. Killing the chain here made pause permanent: after
   // resume nothing ever rescheduled the per-recipient jobs, so every sequence that
-  // came due during the pause was silently lost.
+  // came due during the pause was silently lost. Preserve the `sent` stamp so a
+  // crash-recovered step paused mid-flight doesn't re-send after resume.
   if (campaign.status === 'paused') {
-    await enqueueJob(job.tenantId, 'drip_step', new Date(Date.now() + 15 * 60_000), { campaignId, leadId, stepIndex });
+    await enqueueJob(job.tenantId, 'drip_step', new Date(Date.now() + 15 * 60_000),
+      { campaignId, leadId, stepIndex, ...(p.sent ? { sent: true } : {}) });
     return;
   }
   if (campaign.status === 'scheduled') {
@@ -224,11 +235,27 @@ registerJobHandler('drip_step', async (payload: unknown, job: ClaimedJob) => {
   }
 
   const steps = parseSteps(campaign.steps);
+
+  // Mark the whole drip done once no recipient has a queued/running step left. Runs on
+  // EVERY terminal path (send done AND every skip), else a campaign whose last
+  // outstanding recipient ends in a skip (replied/opted-out — the common drip outcome)
+  // would stay 'running' forever. `me` = this job, which is still 'running'.
+  const maybeMarkDone = async () => {
+    const remaining = await prisma.job.count({
+      where: { tenantId: job.tenantId, type: 'drip_step', status: { in: ['pending', 'running'] }, payload: { path: ['campaignId'], equals: campaignId } },
+    });
+    if (remaining <= 1) await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'done' } });
+  };
+  const skip = async (id: string, error: string) => {
+    await prisma.campaignRecipient.update({ where: { id }, data: { status: 'skipped', error } });
+    await maybeMarkDone();
+  };
+
   const step = steps[stepIndex];
-  if (!step) return; // sequence finished
+  if (!step) { await maybeMarkDone(); return; } // sequence finished for this recipient
 
   const rec = await prisma.campaignRecipient.findFirst({ where: { campaignId, leadId } });
-  if (!rec) return;
+  if (!rec) { await maybeMarkDone(); return; }
 
   // finishStep runs the post-send bookkeeping + next-step scheduling; shared with the
   // crash-retry path below so a retried job still advances the sequence.
@@ -239,15 +266,7 @@ registerJobHandler('drip_step', async (payload: unknown, job: ClaimedJob) => {
       const at = new Date(Date.now() + next.afterHours * 3_600_000 + JITTER_MS());
       await enqueueJob(job.tenantId, 'drip_step', at, { campaignId, leadId, stepIndex: stepIndex + 1 });
     } else {
-      // Last step for this recipient — if no other recipient still has a queued step,
-      // the whole drip is finished (a drip never went 'done' before, so the UI showed
-      // it as active forever and pause/send stayed enabled on a finished campaign).
-      const remaining = await prisma.job.count({
-        where: { tenantId: job.tenantId, type: 'drip_step', status: { in: ['pending', 'running'] }, payload: { path: ['campaignId'], equals: campaignId } },
-      });
-      if (remaining <= 1) { // ourselves — we're still 'running'
-        await prisma.campaign.update({ where: { id: campaignId }, data: { status: 'done' } });
-      }
+      await maybeMarkDone(); // last step for this recipient
     }
   };
 
@@ -260,24 +279,15 @@ registerJobHandler('drip_step', async (payload: unknown, job: ClaimedJob) => {
   }
 
   const lead = await prisma.lead.findFirst({ where: { id: leadId, tenantId: job.tenantId }, include: { line: true } });
-  if (!lead) {
-    await prisma.campaignRecipient.update({ where: { id: rec.id }, data: { status: 'skipped', error: 'lead deleted' } });
-    return;
-  }
-  if (lead.optedOut) {
-    await prisma.campaignRecipient.update({ where: { id: rec.id }, data: { status: 'skipped', error: 'opted out' } });
-    return;
-  }
+  if (!lead) { await skip(rec.id, 'lead deleted'); return; }
+  if (lead.optedOut) { await skip(rec.id, 'opted out'); return; }
 
   // The lead answered since enrolling → they're engaged; stop the sequence.
   const replied = await prisma.message.findFirst({
     where: { leadId, tenantId: job.tenantId, direction: 'inbound', timestamp: { gt: rec.createdAt } },
     select: { id: true },
   });
-  if (replied) {
-    await prisma.campaignRecipient.update({ where: { id: rec.id }, data: { status: 'skipped', error: 'הלקוח הגיב — הרצף הופסק' } });
-    return;
-  }
+  if (replied) { await skip(rec.id, 'הלקוח הגיב — הרצף הופסק'); return; }
 
   // Daily cap → retry this step just after UTC midnight (when the cap resets)
   // rather than dropping it.
