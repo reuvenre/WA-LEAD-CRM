@@ -1,13 +1,16 @@
 'use client';
 
 import { useState } from 'react';
-import { Search, Users, ChevronDown, Plus, DownloadCloud, Loader2, CheckSquare, Trash2, X } from 'lucide-react';
+import { Search, Users, ChevronDown, Plus, DownloadCloud, Loader2, CheckSquare, Trash2, X, AlertCircle, RefreshCw } from 'lucide-react';
 import { cn, STATUS_CONFIG, CHANNEL_CONFIG, formatTime, ALL_STATUSES } from '@/lib/utils';
 import type { Lead, LeadStatus, LeadChannel } from '@/types';
 
 interface LeadListProps {
   leads: Lead[];
   loading: boolean;
+  /** Load failure. Distinct from an empty list — never render "no leads" for it. */
+  error?: string | null;
+  onRetry?: () => void;
   selectedId: string | null;
   statusFilter: string;
   search: string;
@@ -23,6 +26,8 @@ interface LeadListProps {
 export function LeadList({
   leads,
   loading,
+  error,
+  onRetry,
   selectedId,
   statusFilter,
   search,
@@ -163,6 +168,23 @@ export function LeadList({
       <div className="flex-1 overflow-y-auto py-1">
         {loading ? (
           <LeadListSkeleton />
+        ) : error ? (
+          // A failed load must NOT masquerade as "no leads" — that reads as data loss
+          // and sends people hunting for a bug that isn't there.
+          <div className="flex flex-col items-center justify-center h-52 px-6 text-center gap-2">
+            <AlertCircle className="w-8 h-8 text-red-400" />
+            <span className="text-sm font-semibold text-slate-700">טעינת הלידים נכשלה</span>
+            <span className="text-xs text-slate-400 leading-relaxed">{error}</span>
+            {onRetry && (
+              <button
+                onClick={onRetry}
+                className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5 transition"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                נסה שוב
+              </button>
+            )}
+          </div>
         ) : leads.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 text-slate-400 text-sm gap-2">
             <Users className="w-8 h-8 text-slate-300" />

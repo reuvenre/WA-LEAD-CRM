@@ -41,6 +41,7 @@ export default function CRMPage() {
   const selectedLeadIdRef = useRef<string | null>(null);
   useEffect(() => { selectedLeadIdRef.current = selectedLeadId; }, [selectedLeadId]);
   const [loadingLeads, setLoadingLeads] = useState(true);
+  const [leadsError, setLeadsError] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [search, setSearch] = useState('');
   // Agents open on WhatsApp (their conversations); managers open on the dashboard.
@@ -94,14 +95,20 @@ export default function CRMPage() {
 
   // ─── Load Leads ─────────────────────────────────────────────────────────────
   const loadLeads = useCallback(async () => {
+    setLoadingLeads(true);
     try {
       const data = await api.leads.list({
         status: statusFilter !== 'all' ? statusFilter : undefined,
         search: search || undefined,
       });
       setLeads(data.leads);
+      setLeadsError(null);
     } catch (err) {
+      // Surface the failure instead of leaving an empty list behind: a silent catch
+      // here rendered "לא נמצאו לידים", which is indistinguishable from real data
+      // loss (e.g. during a backend redeploy) and sends people chasing ghosts.
       console.error('Failed to load leads:', err);
+      setLeadsError(err instanceof Error ? err.message : 'שגיאת רשת');
     } finally {
       setLoadingLeads(false);
     }
@@ -356,6 +363,8 @@ export default function CRMPage() {
           <LeadList
             leads={leads}
             loading={loadingLeads}
+            error={leadsError}
+            onRetry={loadLeads}
             selectedId={selectedLeadId}
             statusFilter={statusFilter}
             search={search}
