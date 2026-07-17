@@ -37,7 +37,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden" onClick={(e) => e.stopPropagation()} dir="rtl">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 overflow-hidden flex flex-col max-h-[88vh]" onClick={(e) => e.stopPropagation()} dir="rtl">
         <div className="flex items-center justify-between px-5 py-4 border-b border-surface-border">
           <h2 className="font-bold text-slate-800 text-base">הגדרות</h2>
           <button onClick={onClose} className="w-7 h-7 flex items-center justify-center rounded-full hover:bg-slate-100 transition text-slate-400">
@@ -45,7 +45,9 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           </button>
         </div>
 
-        <div className="flex border-b border-surface-border">
+        {/* Pill tabs wrap onto as many rows as needed, so each stays fully readable
+            instead of nine equal-width flex-1 tabs crushing together in a narrow modal. */}
+        <div className="flex flex-wrap gap-1.5 px-4 py-3 border-b border-surface-border bg-surface-subtle/40">
           <TabBtn active={tab === 'profile'} onClick={() => setTab('profile')} icon={<UserCircle className="w-3.5 h-3.5" />} label="פרופיל" />
           {isManager && <TabBtn active={tab === 'agents'} onClick={() => setTab('agents')} icon={<Users className="w-3.5 h-3.5" />} label="נציגים" />}
           {isManager && <TabBtn active={tab === 'templates'} onClick={() => setTab('templates')} icon={<MessageSquareText className="w-3.5 h-3.5" />} label="תבניות" />}
@@ -58,7 +60,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           <TabBtn active={tab === 'password'} onClick={() => setTab('password')} icon={<Lock className="w-3.5 h-3.5" />} label="סיסמה" />
         </div>
 
-        <div className="max-h-[70vh] overflow-y-auto">
+        <div className="flex-1 overflow-y-auto">
           {tab === 'profile' && <ProfileSettings />}
           {tab === 'agents' && <AgentsManagement />}
           {tab === 'templates' && <TemplatesManager />}
@@ -1254,7 +1256,15 @@ function PasswordField({ label, value, onChange, show, onToggle, placeholder }: 
 
 function TabBtn({ active, onClick, icon, label }: { active: boolean; onClick: () => void; icon: React.ReactNode; label: string }) {
   return (
-    <button onClick={onClick} className={cn('flex-1 flex items-center justify-center gap-1.5 py-3 text-xs font-semibold border-b-2 transition', active ? 'border-brand-600 text-brand-600' : 'border-transparent text-slate-400 hover:text-slate-600')}>
+    <button
+      onClick={onClick}
+      className={cn(
+        'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold whitespace-nowrap transition',
+        active
+          ? 'bg-brand-600 text-white shadow-sm'
+          : 'bg-white text-slate-500 border border-surface-border hover:text-slate-700 hover:border-brand-200',
+      )}
+    >
       {icon}{label}
     </button>
   );
