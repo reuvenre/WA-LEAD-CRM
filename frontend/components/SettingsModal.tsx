@@ -593,17 +593,12 @@ function ProfileSettings() {
       setTenantName(settings.name ?? '');
       setTenantEmail(settings.email ?? '');
       setPlan(settings.plan ?? '');
-      // Get current user info from token
-      const token = getToken();
-      if (token) {
-        try {
-          const payload = token.split('.')[1];
-          const json = decodeURIComponent(atob(payload).split('').map(c => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2)).join(''));
-          const parsed = JSON.parse(json);
-          setUsername(parsed.username ?? '');
-          setRole(parsed.role ?? '');
-        } catch {}
-      }
+      // Read the current user from the JWT via the shared helper. The previous inline
+      // atob() didn't convert base64url (- _) to base64, so any token whose payload
+      // contained those chars failed to parse and the name rendered blank.
+      const t = decodeToken();
+      setUsername(t?.username ?? '');
+      setRole(t?.role ?? '');
       setLoading(false);
     }).catch(() => setLoading(false));
   }, []);
