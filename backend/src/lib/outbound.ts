@@ -7,7 +7,7 @@
 
 import { prisma } from './prisma';
 import { getProvider, resolveCreds } from './messaging';
-import { tryBumpDailyCap } from './entitlements';
+import { tryBumpDailyCap, trialStatusOf } from './entitlements';
 import { paced, lineKeyFor } from './sendQueue';
 import { SOCKET_EVENTS, emitScoped, getIo } from '../socket';
 
@@ -42,6 +42,14 @@ export async function sendOutboundText(
 
   const lead = await prisma.lead.findFirst({ where: { id: leadId, tenantId }, include: { line: true } });
   if (!lead) return { ok: false, error: 'lead not found' };
+
+  // Automated sends (auto-reply, scheduled, campaign, CSAT) must also stop once the
+  // trial expires — otherwise a job queued before expiry would keep messaging. Read
+  // methods aren't involved here; this path only ever sends.
+  const trialTenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true, trialEndsAt: true } });
+  if (trialTenant && trialStatusOf(trialTenant).expired) {
+    return { ok: false, error: 'תקופת הניסיון הסתיימה — שדרג כדי להמשיך לשלוח' };
+  }
 
   const doSend = async (): Promise<{ success: boolean; messageId?: string; error?: string }> => {
     // WEBCHAT: no external gateway — the widget polls; skip provider + cap.

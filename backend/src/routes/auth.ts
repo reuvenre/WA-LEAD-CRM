@@ -10,6 +10,7 @@ import { sendMail } from '../lib/mailer';
 import { seedDefaultTemplates } from './templates';
 import { isGoogleConfigured, buildLoginAuthUrl, exchangeLoginCode, getGoogleUserInfo } from '../lib/google';
 import { JWT_SECRET } from '../lib/config';
+import { TRIAL_DAYS } from '../lib/entitlements';
 
 export const authRouter = Router();
 
@@ -102,6 +103,7 @@ authRouter.post('/register', async (req: Request, res: Response) => {
       name: companyName.trim(),
       email: email.trim().toLowerCase(),
       plan: 'TRIAL',
+      trialEndsAt: new Date(Date.now() + TRIAL_DAYS * 86_400_000),
       users: {
         create: {
           username: username.trim(),

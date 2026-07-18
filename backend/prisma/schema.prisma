@@ -75,6 +75,9 @@ model Tenant {
   name         String
   email        String     @unique
   plan         TenantPlan @default(TRIAL)
+  // When the free trial ends. Past this, a TRIAL tenant is read-only until upgrade.
+  // NULL = no deadline (paid plans, or legacy tenants).
+  trialEndsAt  DateTime?
   active       Boolean    @default(true)
   // Green API credentials (per tenant). A Green API instance belongs to exactly one
   // tenant, so the instance id is unique (NULLs are allowed for unconfigured tenants).

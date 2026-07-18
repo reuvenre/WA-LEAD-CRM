@@ -25,7 +25,7 @@ import { WIDGET_JS } from './lib/widgetScript';
 import { startJobRunner, stopJobRunner } from './lib/jobs';
 import { ensureWebhookSecrets } from './lib/webhookSecrets';
 import { requireAuth } from './middleware/auth';
-import { requireFeature } from './lib/entitlements';
+import { requireFeature, requireActiveTrial } from './lib/entitlements';
 import { initSocket, agentRoom } from './socket';
 import type { AuthPayload } from './middleware/auth';
 import { JWT_SECRET, validateEnv } from './lib/config';
@@ -128,16 +128,21 @@ app.get('/health', async (_req, res) => {
 });
 
 // ─── Protected routes ─────────────────────────────────────────────────────────
-app.use('/api/leads', requireAuth, leadsRouter);
-app.use('/api/messages', requireAuth, messagesRouter);
-app.use('/api/wa-import', requireAuth, waImportRouter);   // pull existing WhatsApp contacts + chat history
+// requireActiveTrial makes an expired-trial tenant read-only: it blocks writes
+// (POST/PATCH/DELETE) on the operational routers but lets every GET through, so the
+// user can still see their data — they just can't send/create until they upgrade.
+app.use('/api/leads', requireAuth, requireActiveTrial, leadsRouter);
+app.use('/api/messages', requireAuth, requireActiveTrial, messagesRouter);
+app.use('/api/wa-import', requireAuth, requireActiveTrial, waImportRouter);   // pull existing WhatsApp contacts + chat history
 app.use('/api/push', requireAuth, pushRouter);            // web-push subscriptions
-app.use('/api/templates', requireAuth, templatesRouter);
+app.use('/api/templates', requireAuth, requireActiveTrial, templatesRouter);
 app.use('/api/analytics', requireAuth, requireFeature('analytics'), analyticsRouter);
-app.use('/api/campaigns', requireAuth, requireFeature('broadcast'), campaignsRouter);
-app.use('/api/automations', requireAuth, requireFeature('automations'), automationsRouter);
-app.use('/api/projects', requireAuth, projectsRouter);
-app.use('/api/realestate', requireAuth, realestateRouter);
+app.use('/api/campaigns', requireAuth, requireActiveTrial, requireFeature('broadcast'), campaignsRouter);
+app.use('/api/automations', requireAuth, requireActiveTrial, requireFeature('automations'), automationsRouter);
+app.use('/api/projects', requireAuth, requireActiveTrial, projectsRouter);
+app.use('/api/realestate', requireAuth, requireActiveTrial, realestateRouter);
+// /tenant is intentionally NOT trial-guarded: an expired tenant must still be able to
+// view settings and manage its account (the path to upgrading).
 app.use('/api/tenant', requireAuth, tenantRouter);          // per-tenant settings
 app.use('/api/super-admin', requireAuth, superAdminRouter); // super-admin only
 

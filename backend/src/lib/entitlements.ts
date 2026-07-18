@@ -70,6 +70,50 @@ export function entitlementsFor(plan: TenantPlan): Entitlements {
   return ENTITLEMENTS[plan] ?? ENTITLEMENTS.TRIAL;
 }
 
+// ─── Free-trial window ────────────────────────────────────────────────────────
+export const TRIAL_DAYS = 14;
+
+export interface TrialStatus {
+  onTrial: boolean;      // plan is TRIAL and a deadline exists
+  expired: boolean;      // TRIAL whose deadline has passed → read-only
+  daysLeft: number | null; // whole days remaining (0 on the last day), null if N/A
+  endsAt: string | null;
+}
+
+export function trialStatusOf(tenant: { plan: TenantPlan; trialEndsAt: Date | null }, now: Date = new Date()): TrialStatus {
+  if (tenant.plan !== 'TRIAL' || !tenant.trialEndsAt) {
+    return { onTrial: false, expired: false, daysLeft: null, endsAt: null };
+  }
+  const ms = tenant.trialEndsAt.getTime() - now.getTime();
+  return {
+    onTrial: true,
+    expired: ms <= 0,
+    daysLeft: Math.max(0, Math.ceil(ms / 86_400_000)),
+    endsAt: tenant.trialEndsAt.toISOString(),
+  };
+}
+
+// Express guard: blocks state-changing actions once the trial has expired, so an
+// expired TRIAL tenant becomes read-only (can view, can't send/create) until upgrade.
+// Safe methods (GET/HEAD/OPTIONS) always pass so viewing still works; only writes are
+// blocked. Safe to mount at the router level of read+write routers.
+const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
+export async function requireActiveTrial(req: Request, res: Response, next: NextFunction) {
+  if (READ_METHODS.has(req.method)) return next();
+  const tenant = await prisma.tenant.findUnique({
+    where: { id: req.user!.tenantId },
+    select: { plan: true, trialEndsAt: true },
+  });
+  if (tenant && trialStatusOf(tenant).expired) {
+    return res.status(402).json({
+      error: 'תקופת הניסיון הסתיימה — המערכת במצב קריאה בלבד. שדרג כדי להמשיך לשלוח ולערוך.',
+      upgrade: true,
+      trialExpired: true,
+    });
+  }
+  return next();
+}
+
 async function planOf(tenantId: string): Promise<TenantPlan> {
   const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } });
   return t?.plan ?? 'TRIAL';

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
-import { checkLimit, entitlementsFor } from '../lib/entitlements';
+import { checkLimit, entitlementsFor, trialStatusOf } from '../lib/entitlements';
 
 export const tenantRouter = Router();
 
@@ -130,14 +130,19 @@ tenantRouter.patch('/engagement', async (req: Request, res: Response) => {
 // so the UI can lock/grey gated features instead of only erroring on submit.
 tenantRouter.get('/entitlements', async (req: Request, res: Response) => {
   const tenantId = req.user!.tenantId;
-  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } });
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true, trialEndsAt: true } });
   const ent = entitlementsFor(tenant?.plan ?? 'TRIAL');
   const [users, leads, lines] = await Promise.all([
     prisma.user.count({ where: { tenantId } }),
     prisma.lead.count({ where: { tenantId } }),
     prisma.line.count({ where: { tenantId } }),
   ]);
-  return res.json({ plan: tenant?.plan ?? 'TRIAL', entitlements: ent, usage: { users, leads, lines } });
+  return res.json({
+    plan: tenant?.plan ?? 'TRIAL',
+    entitlements: ent,
+    usage: { users, leads, lines },
+    trial: trialStatusOf(tenant ?? { plan: 'TRIAL', trialEndsAt: null }),
+  });
 });
 
 // PATCH /api/tenant/profile — update tenant name & email (admin only)
