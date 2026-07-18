@@ -22,6 +22,7 @@ import { UpgradeModal } from '@/components/UpgradeModal';
 import { UpgradeScreen } from '@/components/UpgradeScreen';
 import { openUpgrade } from '@/lib/upgrade';
 import type { PlanId } from '@/lib/plans';
+import { Landing } from '@/components/marketing/Landing';
 
 import { ProjectsView } from '@/components/ProjectsView';
 import { CalendarView } from '@/components/CalendarView';
@@ -36,7 +37,23 @@ import Campaigns from '@/components/Campaigns';
 
 type ViewMode = 'chat' | 'kanban' | 'dashboard' | 'projects' | 'calendar' | 'deals' | 'properties' | 're_projects' | 'listings' | 'clients' | 'campaigns' | 'upgrade';
 
-export default function CRMPage() {
+// Root: a logged-out visitor sees the public marketing landing; a logged-in user gets
+// the app. Deciding here (rather than redirecting) keeps `/` as the marketing URL while
+// the authenticated app lives at the same path — no routing changes to the app itself.
+export default function Home() {
+  const [authed, setAuthed] = useState<boolean | null>(null);
+  useEffect(() => { setAuthed(Boolean(localStorage.getItem('crm_token'))); }, []);
+  if (authed === null) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-surface-muted">
+        <div className="w-8 h-8 rounded-full border-4 border-brand-200 border-t-brand-600 animate-spin" />
+      </div>
+    );
+  }
+  return authed ? <CRMApp /> : <Landing />;
+}
+
+function CRMApp() {
   const [leads, setLeads] = useState<Lead[]>([]);
   const [selectedLeadId, setSelectedLeadId] = useState<string | null>(null);
   const [selectedLead, setSelectedLead] = useState<Lead | null>(null);
