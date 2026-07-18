@@ -33,7 +33,7 @@ export const PLANS: Plan[] = [
   {
     id: 'TRIAL',
     name: 'ניסיון',
-    tagline: '14 יום חינם, ללא כרטיס אשראי',
+    tagline: 'כל היכולות של בייסיק — חינם ל-14 יום, ללא כרטיס אשראי',
     monthly: 0,
     annualMonthly: 0,
     cta: 'התחל ניסיון חינם',
@@ -63,28 +63,31 @@ export function planById(id: PlanId): Plan {
 }
 
 // Feature comparison grid — ordered by how a buyer evaluates the product.
+// TRIAL mirrors BASIC everywhere: the free trial is a full 14-day taste of BASIC
+// (see backend ENTITLEMENTS — TRIAL === BASIC), so every BASIC row is ticked for TRIAL.
 export const PLAN_FEATURES: PlanFeature[] = [
   { label: 'ניהול לידים ושיחות WhatsApp', tiers: ['TRIAL', 'BASIC', 'PRO'] },
   { label: 'פייפליין (Kanban) ויומן פגישות', tiers: ['TRIAL', 'BASIC', 'PRO'] },
   { label: 'תבניות תשובה מהירה', tiers: ['TRIAL', 'BASIC', 'PRO'] },
-  { label: 'מענה אוטומטי (ברכה / מחוץ לשעות)', tiers: ['BASIC', 'PRO'] },
-  { label: 'ניתוב אוטומטי בין נציגים (round-robin)', tiers: ['BASIC', 'PRO'] },
-  { label: 'תזמון הודעות (שליחה מאוחר יותר)', tiers: ['BASIC', 'PRO'] },
-  { label: 'צ׳אט לאתר (ווידג׳ט)', tiers: ['BASIC', 'PRO'] },
-  { label: 'שדות מותאמים אישית ללידים', tiers: ['BASIC', 'PRO'] },
-  { label: 'סקרי שביעות רצון (CSAT)', tiers: ['BASIC', 'PRO'] },
-  { label: 'דשבורד ואנליטיקה', tiers: ['BASIC', 'PRO'] },
-  { label: 'יומן Google', tiers: ['BASIC', 'PRO'] },
+  { label: 'מענה אוטומטי (ברכה / מחוץ לשעות)', tiers: ['TRIAL', 'BASIC', 'PRO'] },
+  { label: 'ניתוב אוטומטי בין נציגים (round-robin)', tiers: ['TRIAL', 'BASIC', 'PRO'] },
+  { label: 'תזמון הודעות (שליחה מאוחר יותר)', tiers: ['TRIAL', 'BASIC', 'PRO'] },
+  { label: 'צ׳אט לאתר (ווידג׳ט)', tiers: ['TRIAL', 'BASIC', 'PRO'] },
+  { label: 'שדות מותאמים אישית ללידים', tiers: ['TRIAL', 'BASIC', 'PRO'] },
+  { label: 'סקרי שביעות רצון (CSAT)', tiers: ['TRIAL', 'BASIC', 'PRO'] },
+  { label: 'דשבורד ואנליטיקה', tiers: ['TRIAL', 'BASIC', 'PRO'] },
+  { label: 'יומן Google', tiers: ['TRIAL', 'BASIC', 'PRO'] },
   { label: 'קמפייני Broadcast + רצפי Drip', tiers: ['PRO'] },
   { label: 'מספר קווי WhatsApp (עד 5)', tiers: ['PRO'] },
   { label: 'גישת API + אינטגרציות', tiers: ['PRO'] },
 ];
 
 // Limits row (numbers, not check-marks) mirrored from the backend entitlements.
+// TRIAL === BASIC limits (a full BASIC taste), so their columns match.
 export const PLAN_LIMITS: { label: string; values: Record<PlanId, string> }[] = [
-  { label: 'נציגים', values: { TRIAL: '2', BASIC: '3', PRO: '15' } },
-  { label: 'לידים', values: { TRIAL: '100', BASIC: '1,500', PRO: '25,000' } },
-  { label: 'הודעות ליום לכל קו', values: { TRIAL: '50', BASIC: '150', PRO: '300' } },
+  { label: 'נציגים', values: { TRIAL: '3', BASIC: '3', PRO: '15' } },
+  { label: 'לידים', values: { TRIAL: '1,500', BASIC: '1,500', PRO: '25,000' } },
+  { label: 'הודעות ליום לכל קו', values: { TRIAL: '150', BASIC: '150', PRO: '300' } },
 ];
 
 // Map a locked backend feature key → the minimum plan that unlocks it, for upsell copy.

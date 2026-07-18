@@ -31,27 +31,25 @@ export interface Entitlements {
 
 const INF = Number.POSITIVE_INFINITY;
 
+// BASIC is the reference tier. The 14-day free trial is a FULL taste of BASIC — same
+// features and limits — because a trial that can't use auto-replies, the widget, or
+// analytics never demos the value the customer is paying for. What makes the trial
+// time-limited is the read-only lock at expiry (`requireActiveTrial`), not a stripped
+// feature set. So TRIAL and BASIC share one definition.
+const BASIC_ENTITLEMENTS: Entitlements = {
+  maxLines: 1, maxUsers: 3, maxLeads: 1_500, dailyMsgCapPerLine: 150,
+  maxTemplates: 20, maxAutomations: 2,
+  features: {
+    multiLine: false, automations: true, analytics: true, googleCalendar: true,
+    apifyLive: false, listings: false, apiAccess: false,
+    autoReplies: true, roundRobin: true, scheduledMessages: true, customAttributes: true,
+    webchat: true, broadcast: false, csat: true,
+  },
+};
+
 export const ENTITLEMENTS: Record<TenantPlan, Entitlements> = {
-  TRIAL: {
-    maxLines: 1, maxUsers: 2, maxLeads: 100, dailyMsgCapPerLine: 50,
-    maxTemplates: 5, maxAutomations: 0,
-    features: {
-      multiLine: false, automations: false, analytics: false, googleCalendar: false,
-      apifyLive: false, listings: false, apiAccess: false,
-      autoReplies: false, roundRobin: false, scheduledMessages: false, customAttributes: false,
-      webchat: false, broadcast: false, csat: false,
-    },
-  },
-  BASIC: {
-    maxLines: 1, maxUsers: 3, maxLeads: 1_500, dailyMsgCapPerLine: 150,
-    maxTemplates: 20, maxAutomations: 2,
-    features: {
-      multiLine: false, automations: true, analytics: true, googleCalendar: true,
-      apifyLive: false, listings: false, apiAccess: false,
-      autoReplies: true, roundRobin: true, scheduledMessages: true, customAttributes: true,
-      webchat: true, broadcast: false, csat: true,
-    },
-  },
+  TRIAL: BASIC_ENTITLEMENTS,
+  BASIC: BASIC_ENTITLEMENTS,
   PRO: {
     maxLines: 5, maxUsers: 15, maxLeads: 25_000, dailyMsgCapPerLine: 300,
     maxTemplates: INF, maxAutomations: INF,
