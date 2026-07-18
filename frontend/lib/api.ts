@@ -65,7 +65,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       localStorage.removeItem('crm_token');
       if (!window.location.pathname.startsWith('/login')) window.location.href = '/login';
     }
-    const err = await res.json().catch(() => ({})) as { error?: string };
+    const err = await res.json().catch(() => ({})) as { error?: string; upgrade?: boolean; trialExpired?: boolean; feature?: string };
+    // Paywall responses (402/403 with upgrade:true) surface the shared upgrade modal
+    // instead of only throwing a bare error somewhere in the UI.
+    if (err.upgrade && typeof window !== 'undefined') {
+      const { openUpgrade } = await import('./upgrade');
+      openUpgrade({ reason: err.trialExpired ? 'trial' : err.feature ? 'feature' : 'limit', feature: err.feature, message: err.error });
+    }
     throw new Error(err.error ?? `HTTP ${res.status}`);
   }
   if (res.status === 204) return undefined as T;
@@ -225,6 +231,7 @@ export const api = {
       plan: string;
       entitlements: { features: Record<string, boolean> } & Record<string, unknown>;
       usage: { users: number; leads: number; lines: number };
+      trial: { onTrial: boolean; expired: boolean; daysLeft: number | null; endsAt: string | null };
     }>('/api/tenant/entitlements'),
     updateGreenApi: (data: { greenApiInstanceId: string; greenApiToken: string; greenApiWebhookUrl?: string }) =>
       request('/api/tenant/green-api', { method: 'PATCH', body: JSON.stringify(data) }),

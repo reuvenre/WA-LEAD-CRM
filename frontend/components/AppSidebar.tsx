@@ -3,14 +3,16 @@
 import {
   LayoutDashboard, Building2, Home, Building, KeyRound, GitBranch,
   CalendarDays, MessageSquare, FolderKanban, Settings as SettingsIcon,
-  Shield, LogOut, Users, Megaphone,
+  Shield, LogOut, Users, Megaphone, Lock,
 } from 'lucide-react';
 import { Sidebar } from '@wa-lead/ui';
 import { ROLE_LABELS } from '@/lib/auth';
+import { openUpgrade } from '@/lib/upgrade';
 
 export type ViewMode =
   | 'chat' | 'kanban' | 'dashboard' | 'projects' | 'calendar'
-  | 'deals' | 'properties' | 're_projects' | 'listings' | 'clients' | 'campaigns';
+  | 'deals' | 'properties' | 're_projects' | 'listings' | 'clients' | 'campaigns'
+  | 'upgrade';
 
 // Both the CRM world (chat/pipeline/leads) and the real-estate world
 // (deals/properties/projects/listings) in one nav.
@@ -44,22 +46,27 @@ export function AppSidebar({
   onLogout: () => void;
 }) {
   const roleLabel = role ? ROLE_LABELS[role] ?? role : '';
-  // Paid-upgrade modules are hidden until the plan includes them. `listings` (דירות
-  // יד שניה) is off for all tiers today — a future upsell.
+  // Paid-upgrade modules. `listings` (דירות יד שניה) is off for all tiers today.
   const gated: Partial<Record<ViewMode, string>> = { listings: 'listings', campaigns: 'broadcast' };
   // Manager-only nav items (agents get a 403 from the backend anyway).
   const managerOnly: ViewMode[] = ['campaigns'];
   const items = NAV
-    .filter(({ view }) => {
-      if (managerOnly.includes(view) && role === 'AGENT') return false;
+    // Agents never see manager-only items; that's a role boundary, not an upsell.
+    .filter(({ view }) => !(managerOnly.includes(view) && role === 'AGENT'))
+    .map(({ view, label, icon: Icon }) => {
       const feat = gated[view];
-      return !feat || (features ? Boolean(features[feat]) : false);
-    })
-    .map(({ view, label, icon: Icon }) => ({
-      key: view,
-      label,
-      icon: <Icon size={16} className="flex-shrink-0" />,
-    }));
+      // Show gated items LOCKED (dimmed + lock badge) rather than hiding them, so the
+      // user sees what a paid plan unlocks. Clicking a locked item opens the upgrade
+      // modal instead of navigating.
+      const locked = Boolean(feat) && !(features ? Boolean(features[feat!]) : false);
+      return {
+        key: view,
+        label,
+        icon: <Icon size={16} className="flex-shrink-0" />,
+        locked,
+        trailing: locked ? <Lock size={13} className="text-slate-500" /> : undefined,
+      };
+    });
 
   return (
     <Sidebar
@@ -77,7 +84,13 @@ export function AppSidebar({
       highlightUser={isSuperAdmin}
       items={items}
       activeKey={viewMode}
-      onSelect={(k) => onSelect(k as ViewMode)}
+      onSelect={(k) => {
+        // Clicking a plan-locked item opens the upgrade prompt instead of navigating.
+        const feat = gated[k as ViewMode];
+        const locked = Boolean(feat) && !(features ? Boolean(features[feat!]) : false);
+        if (locked) { openUpgrade({ reason: 'feature', feature: feat }); return; }
+        onSelect(k as ViewMode);
+      }}
       footer={
         <>
           {isSuperAdmin && (

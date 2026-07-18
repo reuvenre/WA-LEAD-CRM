@@ -17,6 +17,11 @@ import { AppSidebar } from '@/components/AppSidebar';
 import { useConfirm } from '@/components/useConfirm';
 import { useAuth } from '@/hooks/useAuth';
 import { decodeToken } from '@/lib/auth';
+import { TrialBanner } from '@/components/TrialBanner';
+import { UpgradeModal } from '@/components/UpgradeModal';
+import { UpgradeScreen } from '@/components/UpgradeScreen';
+import { openUpgrade } from '@/lib/upgrade';
+import type { PlanId } from '@/lib/plans';
 
 import { ProjectsView } from '@/components/ProjectsView';
 import { CalendarView } from '@/components/CalendarView';
@@ -29,7 +34,7 @@ import Listings from '@/components/realestate/Listings';
 import REClients from '@/components/realestate/REClients';
 import Campaigns from '@/components/Campaigns';
 
-type ViewMode = 'chat' | 'kanban' | 'dashboard' | 'projects' | 'calendar' | 'deals' | 'properties' | 're_projects' | 'listings' | 'clients' | 'campaigns';
+type ViewMode = 'chat' | 'kanban' | 'dashboard' | 'projects' | 'calendar' | 'deals' | 'properties' | 're_projects' | 'listings' | 'clients' | 'campaigns' | 'upgrade';
 
 export default function CRMPage() {
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -87,10 +92,17 @@ export default function CRMPage() {
     api.tenant.settings().then((s) => setWaConnected(Boolean(s.greenApiInstanceId))).catch(() => {});
   }, []);
 
-  // Plan features — gate nav items / screens that are paid upgrades (e.g. listings).
+  // Plan features + trial status — gate nav items / screens that are paid upgrades,
+  // and drive the trial banner + upgrade prompts.
   const [features, setFeatures] = useState<Record<string, boolean> | null>(null);
+  const [plan, setPlan] = useState<string>('TRIAL');
+  const [trial, setTrial] = useState<{ onTrial: boolean; expired: boolean; daysLeft: number | null } | null>(null);
   useEffect(() => {
-    api.tenant.entitlements().then((e) => setFeatures(e.entitlements.features)).catch(() => {});
+    api.tenant.entitlements().then((e) => {
+      setFeatures(e.entitlements.features);
+      setPlan(e.plan);
+      setTrial(e.trial);
+    }).catch(() => {});
   }, []);
 
   // ─── Load Leads ─────────────────────────────────────────────────────────────
@@ -320,7 +332,10 @@ export default function CRMPage() {
   }
 
   return (
-    <div className="flex flex-col md:flex-row h-screen overflow-hidden bg-[#F4F6FB]" dir="rtl">
+    <div className="flex flex-col h-screen overflow-hidden bg-[#F4F6FB]" dir="rtl">
+      {/* Trial banner — full width across the top, above the app chrome. */}
+      <TrialBanner trial={trial} onUpgrade={() => setViewMode('upgrade')} />
+      <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
       {/* Mobile top bar (hidden on desktop) — holds the menu button so nothing floats over content */}
       <div className="md:hidden flex items-center gap-3 px-4 h-12 bg-[#101E38] text-white flex-shrink-0 z-20">
         <button onClick={() => setMobileNav(true)} aria-label="פתח תפריט" className="w-9 h-9 -mr-2 flex items-center justify-center rounded-lg hover:bg-white/10 transition">
@@ -391,7 +406,9 @@ export default function CRMPage() {
             <button onClick={() => setShowSettings(true)} className="text-sm font-semibold text-white bg-brand-600 hover:bg-brand-700 rounded-lg px-3 py-1.5 flex-shrink-0 whitespace-nowrap">חבר עכשיו</button>
           </div>
         )}
-        {viewMode === 'deals' ? (
+        {viewMode === 'upgrade' ? (
+          <UpgradeScreen currentPlan={plan as PlanId} onBack={() => setViewMode('dashboard')} />
+        ) : viewMode === 'deals' ? (
           <div className="flex-1 overflow-y-auto bg-surface-muted"><DealFlow /></div>
         ) : viewMode === 'properties' ? (
           <div className="flex-1 overflow-y-auto bg-surface-muted"><Properties /></div>
@@ -462,12 +479,16 @@ export default function CRMPage() {
       )}
       </div>
       {/* ── end panels row ── */}
+      </div>
+      {/* ── end banner+panels wrapper ── */}
 
       {toast && (
         <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-[60] bg-slate-900 text-white text-sm font-medium px-4 py-2.5 rounded-lg shadow-lg max-w-[90vw] text-center">
           {toast}
         </div>
       )}
+      {/* Shared upgrade modal — opened by locked nav items, 402/403 API responses, or the trial banner. */}
+      <UpgradeModal currentPlan={plan as PlanId} onGoToUpgrade={() => setViewMode('upgrade')} />
       {confirmDialog}
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
       {showSuperAdmin && <SuperAdminPanel onClose={() => setShowSuperAdmin(false)} />}

@@ -194,11 +194,12 @@ function Sidebar({
           onClick: () => onSelect(it.key),
           className: cn(
             "flex items-center gap-2.5 px-3 py-2 rounded-md text-[13px] font-medium transition-colors text-right",
-            active ? "bg-brand-600 text-white" : "text-slate-400 hover:bg-white/10 hover:text-white"
+            active ? "bg-brand-600 text-white" : it.locked ? "text-slate-500 hover:bg-white/5 hover:text-slate-300" : "text-slate-400 hover:bg-white/10 hover:text-white"
           ),
           children: [
             it.icon,
-            it.label
+            /* @__PURE__ */ jsx("span", { className: cn(it.locked && "opacity-90"), children: it.label }),
+            it.trailing && /* @__PURE__ */ jsx("span", { className: "mr-auto flex items-center", children: it.trailing })
           ]
         },
         it.key

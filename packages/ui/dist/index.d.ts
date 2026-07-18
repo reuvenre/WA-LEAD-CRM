@@ -82,6 +82,10 @@ interface SidebarItem {
     label: string;
     /** Optional icon element (e.g. a lucide-react icon). */
     icon?: ReactNode;
+    /** Dim the item and let the click signal an upgrade intent (e.g. a paid feature). */
+    locked?: boolean;
+    /** Trailing element pinned to the far edge (e.g. a lock badge). */
+    trailing?: ReactNode;
 }
 interface SidebarProps {
     brandLabel?: string;
