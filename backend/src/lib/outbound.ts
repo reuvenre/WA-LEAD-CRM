@@ -44,12 +44,11 @@ export async function sendOutboundText(
   if (!lead) return { ok: false, error: 'lead not found' };
 
   // Automated sends (auto-reply, scheduled, campaign, CSAT) must also stop once the
-  // trial expires — otherwise a job queued before expiry would keep messaging. Read
-  // methods aren't involved here; this path only ever sends.
-  const trialTenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true, trialEndsAt: true } });
-  if (trialTenant && trialStatusOf(trialTenant).expired) {
-    return { ok: false, error: 'תקופת הניסיון הסתיימה — שדרג כדי להמשיך לשלוח' };
-  }
+  // trial expires OR the account is cancelled — otherwise a job queued earlier would
+  // keep messaging. This path only ever sends (no read methods involved).
+  const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true, trialEndsAt: true, canceledAt: true } });
+  if (t?.canceledAt) return { ok: false, error: 'המנוי בוטל — המערכת במצב קריאה בלבד' };
+  if (t && trialStatusOf(t).expired) return { ok: false, error: 'תקופת הניסיון הסתיימה — שדרג כדי להמשיך לשלוח' };
 
   const doSend = async (): Promise<{ success: boolean; messageId?: string; error?: string }> => {
     // WEBCHAT: no external gateway — the widget polls; skip provider + cap.

@@ -1,7 +1,8 @@
 import { Router, Request, Response } from 'express';
 import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
-import { checkLimit, entitlementsFor, trialStatusOf } from '../lib/entitlements';
+import { checkLimit, entitlementsFor, trialStatusOf, accountStatusOf } from '../lib/entitlements';
+import { cancelTenant, reactivateTenant } from '../lib/offboarding';
 
 export const tenantRouter = Router();
 
@@ -130,7 +131,7 @@ tenantRouter.patch('/engagement', async (req: Request, res: Response) => {
 // so the UI can lock/grey gated features instead of only erroring on submit.
 tenantRouter.get('/entitlements', async (req: Request, res: Response) => {
   const tenantId = req.user!.tenantId;
-  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true, trialEndsAt: true } });
+  const tenant = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true, trialEndsAt: true, canceledAt: true, purgeAt: true } });
   const ent = entitlementsFor(tenant?.plan ?? 'TRIAL');
   const [users, leads, lines] = await Promise.all([
     prisma.user.count({ where: { tenantId } }),
@@ -142,7 +143,62 @@ tenantRouter.get('/entitlements', async (req: Request, res: Response) => {
     entitlements: ent,
     usage: { users, leads, lines },
     trial: trialStatusOf(tenant ?? { plan: 'TRIAL', trialEndsAt: null }),
+    account: accountStatusOf(tenant ?? { canceledAt: null, purgeAt: null }),
   });
+});
+
+// ─── Account offboarding (admin only) ─────────────────────────────────────────
+// POST /api/tenant/cancel — start cancellation. Requires typing the company name to
+// confirm (guards against an accidental irreversible-feeling action). The account goes
+// read-only immediately; data is kept for a 30-day grace window, then purged.
+tenantRouter.post('/cancel', async (req: Request, res: Response) => {
+  if (!requireTenantAdmin(req, res)) return;
+  const tenant = await prisma.tenant.findUnique({ where: { id: req.user!.tenantId }, select: { name: true, canceledAt: true } });
+  if (!tenant) return res.status(404).json({ error: 'לא נמצא' });
+  if (tenant.canceledAt) return res.status(400).json({ error: 'המנוי כבר בוטל' });
+  const confirmName = String(req.body?.confirmName ?? '').trim();
+  if (confirmName !== tenant.name.trim()) {
+    return res.status(400).json({ error: 'שם החברה שהוקלד אינו תואם — נדרש אישור מדויק כדי לבטל' });
+  }
+  const { purgeAt } = await cancelTenant(req.user!.tenantId);
+  return res.json({ success: true, purgeAt: purgeAt.toISOString() });
+});
+
+// POST /api/tenant/reactivate — undo a cancellation during the grace window (win-back).
+tenantRouter.post('/reactivate', async (req: Request, res: Response) => {
+  if (!requireTenantAdmin(req, res)) return;
+  const tenant = await prisma.tenant.findUnique({ where: { id: req.user!.tenantId }, select: { canceledAt: true } });
+  if (!tenant?.canceledAt) return res.status(400).json({ error: 'החשבון פעיל — אין מה להפעיל מחדש' });
+  await reactivateTenant(req.user!.tenantId);
+  return res.json({ success: true });
+});
+
+// GET /api/tenant/export — download ALL of the tenant's operational data as one JSON
+// file ("your data is yours"). Admin only. Available any time, not just on cancel.
+tenantRouter.get('/export', async (req: Request, res: Response) => {
+  if (!requireTenantAdmin(req, res)) return;
+  const tenantId = req.user!.tenantId;
+  const [tenant, leads, messages, projects, templates, campaigns, reClients, deals, properties] = await Promise.all([
+    prisma.tenant.findUnique({ where: { id: tenantId }, select: { name: true, email: true, plan: true, createdAt: true } }),
+    prisma.lead.findMany({ where: { tenantId } }),
+    prisma.message.findMany({ where: { tenantId }, orderBy: { timestamp: 'asc' } }),
+    prisma.project.findMany({ where: { tenantId } }),
+    prisma.template.findMany({ where: { tenantId } }),
+    prisma.campaign.findMany({ where: { tenantId }, include: { recipients: true } }),
+    prisma.rEClient.findMany({ where: { tenantId } }),
+    prisma.deal.findMany({ where: { tenantId } }),
+    prisma.property.findMany({ where: { tenantId } }),
+  ]);
+  const bundle = {
+    exportedAt: new Date().toISOString(),
+    tenant,
+    counts: { leads: leads.length, messages: messages.length, projects: projects.length, campaigns: campaigns.length, clients: reClients.length, deals: deals.length, properties: properties.length },
+    data: { leads, messages, projects, templates, campaigns, reClients, deals, properties },
+  };
+  const stamp = new Date().toISOString().slice(0, 10);
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="crm-export-${stamp}.json"`);
+  return res.send(JSON.stringify(bundle, null, 2));
 });
 
 // PATCH /api/tenant/profile — update tenant name & email (admin only)

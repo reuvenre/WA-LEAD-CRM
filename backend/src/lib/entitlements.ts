@@ -91,18 +91,40 @@ export function trialStatusOf(tenant: { plan: TenantPlan; trialEndsAt: Date | nu
   };
 }
 
-// Express guard: blocks state-changing actions once the trial has expired, so an
-// expired TRIAL tenant becomes read-only (can view, can't send/create) until upgrade.
-// Safe methods (GET/HEAD/OPTIONS) always pass so viewing still works; only writes are
-// blocked. Safe to mount at the router level of read+write routers.
+// ─── Account offboarding state ────────────────────────────────────────────────
+export const CANCEL_GRACE_DAYS = 30;
+
+export interface AccountStatus {
+  canceled: boolean;        // the customer requested cancellation
+  purgeAt: string | null;   // when the data gets deleted (canceledAt + grace)
+  daysUntilPurge: number | null;
+}
+
+export function accountStatusOf(tenant: { canceledAt: Date | null; purgeAt: Date | null }, now: Date = new Date()): AccountStatus {
+  if (!tenant.canceledAt) return { canceled: false, purgeAt: null, daysUntilPurge: null };
+  const ms = tenant.purgeAt ? tenant.purgeAt.getTime() - now.getTime() : 0;
+  return { canceled: true, purgeAt: tenant.purgeAt?.toISOString() ?? null, daysUntilPurge: Math.max(0, Math.ceil(ms / 86_400_000)) };
+}
+
+// Express guard: an account becomes READ-ONLY (writes blocked, GETs allowed) when its
+// trial has expired OR the customer has cancelled (grace period). Safe to mount at the
+// router level of read+write routers. `requireActiveTrial` kept as an alias for the
+// existing mounts.
 const READ_METHODS = new Set(['GET', 'HEAD', 'OPTIONS']);
-export async function requireActiveTrial(req: Request, res: Response, next: NextFunction) {
+export async function requireWritableAccount(req: Request, res: Response, next: NextFunction) {
   if (READ_METHODS.has(req.method)) return next();
   const tenant = await prisma.tenant.findUnique({
     where: { id: req.user!.tenantId },
-    select: { plan: true, trialEndsAt: true },
+    select: { plan: true, trialEndsAt: true, canceledAt: true, purgeAt: true },
   });
-  if (tenant && trialStatusOf(tenant).expired) {
+  if (!tenant) return next();
+  if (tenant.canceledAt) {
+    return res.status(402).json({
+      error: 'המנוי בוטל — המערכת במצב קריאה בלבד עד למחיקת הנתונים. ניתן להפעיל מחדש בהגדרות.',
+      canceled: true,
+    });
+  }
+  if (trialStatusOf(tenant).expired) {
     return res.status(402).json({
       error: 'תקופת הניסיון הסתיימה — המערכת במצב קריאה בלבד. שדרג כדי להמשיך לשלוח ולערוך.',
       upgrade: true,
@@ -111,6 +133,7 @@ export async function requireActiveTrial(req: Request, res: Response, next: Next
   }
   return next();
 }
+export const requireActiveTrial = requireWritableAccount;
 
 async function planOf(tenantId: string): Promise<TenantPlan> {
   const t = await prisma.tenant.findUnique({ where: { id: tenantId }, select: { plan: true } });
