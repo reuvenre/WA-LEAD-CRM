@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { X, ShieldCheck, Lock, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Check, UserCircle, Building2, Mail, Users, Plus, ToggleLeft, ToggleRight, CalendarDays, Trash2, MessageSquareText, Bot, KeyRound, Globe, Copy, Bell } from 'lucide-react';
+import { X, ShieldCheck, Lock, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Check, UserCircle, Building2, Mail, Users, Plus, ToggleLeft, ToggleRight, CalendarDays, Trash2, MessageSquareText, Bot, KeyRound, Globe, Copy, Bell, Download, LifeBuoy, RotateCcw, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api, type AutoRepliesConfig } from '@/lib/api';
 import { useConfirm } from './useConfirm';
@@ -26,7 +26,7 @@ async function authFetch(path: string, body?: object, method?: string) {
 
 interface SettingsModalProps { onClose: () => void; }
 
-type Tab = 'profile' | 'agents' | 'templates' | '2fa' | 'password' | 'green-api' | 'google' | 'engagement' | 'widget' | 'notifications';
+type Tab = 'profile' | 'agents' | 'templates' | '2fa' | 'password' | 'green-api' | 'google' | 'engagement' | 'widget' | 'notifications' | 'account';
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
   const [tab, setTab] = useState<Tab>('profile');
@@ -34,6 +34,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
   // agents only get their personal tabs (profile, calendar, 2FA, password).
   const role = decodeToken()?.role;
   const isManager = role === 'MANAGER' || role === 'ADMIN' || role === 'SUPER_ADMIN';
+  const isAdmin = role === 'ADMIN' || role === 'SUPER_ADMIN';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm" onClick={onClose}>
@@ -58,6 +59,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           <TabBtn active={tab === 'google'} onClick={() => setTab('google')} icon={<CalendarDays className="w-3.5 h-3.5" />} label="יומן" />
           <TabBtn active={tab === '2fa'} onClick={() => setTab('2fa')} icon={<ShieldCheck className="w-3.5 h-3.5" />} label="2FA" />
           <TabBtn active={tab === 'password'} onClick={() => setTab('password')} icon={<Lock className="w-3.5 h-3.5" />} label="סיסמה" />
+          {isAdmin && <TabBtn active={tab === 'account'} onClick={() => setTab('account')} icon={<LifeBuoy className="w-3.5 h-3.5" />} label="חשבון" />}
         </div>
 
         <div className="flex-1 overflow-y-auto">
@@ -71,6 +73,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           {tab === 'google' && <GoogleCalendarSettings />}
           {tab === '2fa' && <TwoFactorSetup />}
           {tab === 'password' && <ChangePassword onDone={onClose} />}
+          {tab === 'account' && <AccountSettings />}
         </div>
       </div>
     </div>
@@ -1245,6 +1248,128 @@ function PasswordField({ label, value, onChange, show, onToggle, placeholder }: 
           {show ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
         </button>
       </div>
+    </div>
+  );
+}
+
+// ─── Account: data export + cancel / reactivate ──────────────────────────────
+function AccountSettings() {
+  const [account, setAccount] = useState<{ canceled: boolean; purgeAt: string | null; daysUntilPurge: number | null } | null>(null);
+  const [companyName, setCompanyName] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [exporting, setExporting] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [confirmInput, setConfirmInput] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
+  const [toast, setToast] = useState('');
+
+  const load = () => {
+    Promise.all([api.tenant.entitlements(), api.tenant.settings()])
+      .then(([e, s]) => { setAccount(e.account); setCompanyName(s.name ?? ''); })
+      .catch(() => {})
+      .finally(() => setLoading(false));
+  };
+  useEffect(load, []);
+
+  const doExport = async () => {
+    setExporting(true); setError('');
+    try {
+      const res = await fetch(`${API_URL}/api/tenant/export`, { headers: { Authorization: `Bearer ${getToken()}` } });
+      if (!res.ok) throw new Error('הייצוא נכשל');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `crm-export-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      setToast('הנתונים הורדו בהצלחה');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'הייצוא נכשל');
+    } finally { setExporting(false); }
+  };
+
+  const doCancel = async () => {
+    setBusy(true); setError('');
+    try {
+      await api.tenant.cancel(confirmInput.trim());
+      setConfirming(false); setConfirmInput('');
+      load();
+      setToast('המנוי בוטל — המערכת עברה למצב קריאה בלבד');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'הביטול נכשל');
+    } finally { setBusy(false); }
+  };
+
+  const doReactivate = async () => {
+    setBusy(true); setError('');
+    try { await api.tenant.reactivate(); load(); setToast('החשבון הופעל מחדש 🎉'); }
+    catch (e) { setError(e instanceof Error ? e.message : 'ההפעלה נכשלה'); }
+    finally { setBusy(false); }
+  };
+
+  if (loading) return <div className="p-6 text-center text-slate-400 text-sm">טוען...</div>;
+
+  const purgeDate = account?.purgeAt ? new Date(account.purgeAt).toLocaleDateString('he-IL') : '';
+
+  return (
+    <div className="p-6 space-y-5">
+      {toast && <div className="bg-green-50 border border-green-200 text-green-700 text-sm rounded-lg px-3 py-2">{toast}</div>}
+      {error && <div className="flex items-center gap-2 text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2"><AlertCircle className="w-4 h-4 flex-shrink-0" />{error}</div>}
+
+      {/* Export — always available */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2"><Download className="w-5 h-5 text-brand-600" /><h3 className="text-sm font-bold text-slate-800">ייצוא הנתונים שלך</h3></div>
+        <p className="text-xs text-slate-500 leading-relaxed">הורד קובץ אחד עם כל הנתונים שלך — לידים, שיחות, פגישות, תבניות וקמפיינים. הנתונים שלך, שלך.</p>
+        <button onClick={doExport} disabled={exporting}
+          className="inline-flex items-center gap-2 bg-brand-50 hover:bg-brand-100 text-brand-700 text-sm font-semibold px-4 py-2 rounded-lg transition disabled:opacity-60">
+          {exporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />} הורד את הנתונים (JSON)
+        </button>
+      </div>
+
+      {account?.canceled ? (
+        // Cancelled → grace window: show deletion date + reactivate.
+        <div className="bg-red-50 border border-red-200 rounded-xl p-4 space-y-3">
+          <div className="flex items-center gap-2 text-red-700"><Lock className="w-5 h-5" /><h3 className="text-sm font-bold">המנוי בוטל</h3></div>
+          <p className="text-sm text-red-700 leading-relaxed">
+            החשבון במצב <b>קריאה בלבד</b>. הנתונים יימחקו לצמיתות ב-<b>{purgeDate}</b>
+            {account.daysUntilPurge != null && <> (בעוד {account.daysUntilPurge} ימים)</>}.
+            הורד אותם לפני כן אם צריך.
+          </p>
+          <button onClick={doReactivate} disabled={busy}
+            className="inline-flex items-center gap-2 bg-brand-600 hover:bg-brand-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition disabled:opacity-60">
+            {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <RotateCcw className="w-4 h-4" />} הפעל את החשבון מחדש
+          </button>
+        </div>
+      ) : (
+        // Active → danger zone with type-to-confirm cancel.
+        <div className="border border-red-200 rounded-xl p-4 space-y-2">
+          <h3 className="text-sm font-bold text-red-700">ביטול המנוי</h3>
+          <p className="text-xs text-slate-500 leading-relaxed">
+            ביטול יעביר את החשבון למצב קריאה בלבד. הנתונים יישמרו {30} יום (ותוכל להוריד או להתחרט), ואז יימחקו לצמיתות.
+          </p>
+          {!confirming ? (
+            <button onClick={() => { setConfirming(true); setError(''); }}
+              className="text-sm font-semibold text-red-600 hover:text-white hover:bg-red-600 border border-red-300 rounded-lg px-4 py-2 transition">
+              בטל מנוי
+            </button>
+          ) : (
+            <div className="space-y-2 pt-1">
+              <label className="text-xs text-slate-600">להמשך, הקלד את שם החברה — <b>{companyName}</b>:</label>
+              <input value={confirmInput} onChange={(e) => setConfirmInput(e.target.value)} placeholder={companyName}
+                className="w-full px-3 py-2 text-sm rounded-lg border border-surface-border bg-surface-muted focus:outline-none focus:ring-2 focus:ring-red-400" />
+              <div className="flex gap-2">
+                <button onClick={doCancel} disabled={busy || confirmInput.trim() !== companyName.trim()}
+                  className="inline-flex items-center gap-1.5 bg-red-600 hover:bg-red-700 disabled:opacity-40 text-white text-sm font-semibold px-4 py-2 rounded-lg transition">
+                  {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />} אשר ביטול
+                </button>
+                <button onClick={() => { setConfirming(false); setConfirmInput(''); }} className="text-sm text-slate-500 hover:text-slate-700 px-3">חזרה</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

@@ -232,7 +232,11 @@ export const api = {
       entitlements: { features: Record<string, boolean> } & Record<string, unknown>;
       usage: { users: number; leads: number; lines: number };
       trial: { onTrial: boolean; expired: boolean; daysLeft: number | null; endsAt: string | null };
+      account: { canceled: boolean; purgeAt: string | null; daysUntilPurge: number | null };
     }>('/api/tenant/entitlements'),
+    cancel: (confirmName: string) =>
+      request<{ success: boolean; purgeAt: string }>('/api/tenant/cancel', { method: 'POST', body: JSON.stringify({ confirmName }) }),
+    reactivate: () => request<{ success: boolean }>('/api/tenant/reactivate', { method: 'POST' }),
     updateGreenApi: (data: { greenApiInstanceId: string; greenApiToken: string; greenApiWebhookUrl?: string }) =>
       request('/api/tenant/green-api', { method: 'PATCH', body: JSON.stringify(data) }),
     testGreenApi: (data: { greenApiInstanceId: string; greenApiToken: string }) =>

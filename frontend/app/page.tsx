@@ -114,11 +114,13 @@ function CRMApp() {
   const [features, setFeatures] = useState<Record<string, boolean> | null>(null);
   const [plan, setPlan] = useState<string>('TRIAL');
   const [trial, setTrial] = useState<{ onTrial: boolean; expired: boolean; daysLeft: number | null } | null>(null);
+  const [account, setAccount] = useState<{ canceled: boolean; purgeAt: string | null; daysUntilPurge: number | null } | null>(null);
   useEffect(() => {
     api.tenant.entitlements().then((e) => {
       setFeatures(e.entitlements.features);
       setPlan(e.plan);
       setTrial(e.trial);
+      setAccount(e.account);
     }).catch(() => {});
   }, []);
 
@@ -350,8 +352,8 @@ function CRMApp() {
 
   return (
     <div className="flex flex-col h-screen overflow-hidden bg-[#F4F6FB]" dir="rtl">
-      {/* Trial banner — full width across the top, above the app chrome. */}
-      <TrialBanner trial={trial} onUpgrade={() => setViewMode('upgrade')} />
+      {/* Trial / cancelled-account banner — full width across the top, above the chrome. */}
+      <TrialBanner trial={trial} account={account} onUpgrade={() => setViewMode('upgrade')} onManageAccount={() => setShowSettings(true)} />
       <div className="flex flex-col md:flex-row flex-1 min-h-0 overflow-hidden">
       {/* Mobile top bar (hidden on desktop) — holds the menu button so nothing floats over content */}
       <div className="md:hidden flex items-center gap-3 px-4 h-12 bg-[#101E38] text-white flex-shrink-0 z-20">
