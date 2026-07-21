@@ -17,13 +17,14 @@ body {
   direction: rtl;
   font-family: var(--font-sans);
   background-color: #f8fafc;
-  height: 100%;
-  overflow: hidden;
+  /* min-height (not height:100% + overflow:hidden): the authenticated app sets its own
+     fixed h-screen shell, while the tall public pages (landing / pricing / legal) need
+     the page to scroll. A global overflow:hidden here silently broke that scrolling. */
+  min-height: 100%;
 }
 
-#__next,
-main {
-  height: 100%;
+#__next {
+  min-height: 100%;
 }
 
 /* Custom scrollbar */
