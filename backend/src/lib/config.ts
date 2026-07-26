@@ -35,6 +35,7 @@ export function validateEnv(): void {
     'APIFY_API_TOKEN': process.env.APIFY_API_TOKEN ? 'on' : 'off (live listings pull disabled)',
     'GOOGLE_CLIENT_ID': process.env.GOOGLE_CLIENT_ID ? 'on' : 'off (calendar sync disabled)',
     'SENTRY_DSN': process.env.SENTRY_DSN ? 'on' : 'off (error tracking disabled)',
+    'CARDCOM_TERMINAL / CARDCOM_API_NAME': process.env.CARDCOM_TERMINAL && process.env.CARDCOM_API_NAME ? 'on' : 'off (self-serve checkout disabled — upgrades need manual activation)',
   };
   for (const [k, v] of Object.entries(optional)) {
     if (v.startsWith('off')) console.warn(`⚠️  ${k}: ${v}`);

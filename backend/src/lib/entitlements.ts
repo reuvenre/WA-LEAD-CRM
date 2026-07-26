@@ -1,6 +1,7 @@
 import type { Request, Response, NextFunction } from 'express';
 import { TenantPlan } from '@prisma/client';
 import { prisma } from './prisma';
+import { subscriptionLocked } from './billing';
 
 // ─── Plan entitlements: the single source of truth ────────────────────────────
 // Add a plan → add a row here, and nothing else in the app needs to change.
@@ -115,7 +116,7 @@ export async function requireWritableAccount(req: Request, res: Response, next: 
   if (READ_METHODS.has(req.method)) return next();
   const tenant = await prisma.tenant.findUnique({
     where: { id: req.user!.tenantId },
-    select: { plan: true, trialEndsAt: true, canceledAt: true, purgeAt: true },
+    select: { plan: true, trialEndsAt: true, canceledAt: true, purgeAt: true, subStatus: true, currentPeriodEnd: true },
   });
   if (!tenant) return next();
   if (tenant.canceledAt) {
@@ -129,6 +130,15 @@ export async function requireWritableAccount(req: Request, res: Response, next: 
       error: 'תקופת הניסיון הסתיימה — המערכת במצב קריאה בלבד. שדרג כדי להמשיך לשלוח ולערוך.',
       upgrade: true,
       trialExpired: true,
+    });
+  }
+  // A paid plan whose renewal failed (past the dunning window) or that was cancelled
+  // and has run out its paid days gets the same read-only treatment as an expired trial.
+  if (subscriptionLocked(tenant)) {
+    return res.status(402).json({
+      error: 'המנוי אינו פעיל — התשלום האחרון לא נקלט. עדכן אמצעי תשלום כדי להמשיך לשלוח ולערוך.',
+      upgrade: true,
+      pastDue: true,
     });
   }
   return next();

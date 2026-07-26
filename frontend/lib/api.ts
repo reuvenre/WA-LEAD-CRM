@@ -18,6 +18,26 @@ export interface REClientRow { id: string; name: string; phone: string | null; c
 
 export interface ScheduledMessage { id: string; runAt: string; content: string }
 
+export interface BillingPaymentRow {
+  id: string; amount: number; currency: string; plan: string; cycle: string;
+  periodEnd: string; invoiceUrl: string | null; createdAt: string;
+}
+
+export interface BillingStatus {
+  plan: string;
+  /** 'none' | 'active' | 'past_due' | 'canceled' */
+  status: string;
+  cycle: 'monthly' | 'yearly' | null;
+  currentPeriodEnd: string | null;
+  cancelAtPeriodEnd: boolean;
+  /** True once a lapsed subscription has put the account into read-only. */
+  locked: boolean;
+  graceDays: number;
+  /** False when no payment terminal is configured — the UI falls back to contact-us. */
+  checkoutAvailable: boolean;
+  payments: BillingPaymentRow[];
+}
+
 // Auto-reply configuration (greeting / off-hours / away), stored as JSON on the tenant.
 export interface AutoRepliesConfig {
   greeting?: { enabled: boolean; text: string };
@@ -215,6 +235,15 @@ export const api = {
       update: (id: string, data: Partial<REClientRow>) => request<REClientRow>(`/api/realestate/clients/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
       remove: (id: string, deleteLead = false) => request<void>(`/api/realestate/clients/${id}${deleteLead ? '?deleteLead=true' : ''}`, { method: 'DELETE' }),
     },
+  },
+
+  billing: {
+    status: () => request<BillingStatus>('/api/billing'),
+    // Returns the provider's hosted payment page — the caller navigates to it.
+    checkout: (plan: 'BASIC' | 'PRO', cycle: 'monthly' | 'yearly') =>
+      request<{ redirectUrl: string }>('/api/billing/checkout', { method: 'POST', body: JSON.stringify({ plan, cycle }) }),
+    cancel: () => request<{ cancelAtPeriodEnd: boolean; activeUntil: string | null }>('/api/billing/cancel', { method: 'POST' }),
+    resume: () => request<{ cancelAtPeriodEnd: boolean }>('/api/billing/resume', { method: 'POST' }),
   },
 
   tenant: {

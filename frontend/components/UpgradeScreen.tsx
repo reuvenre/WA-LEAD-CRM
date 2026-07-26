@@ -1,24 +1,46 @@
 'use client';
 
-import { Check, Minus, Sparkles, ArrowRight } from 'lucide-react';
+import { Check, Minus, Sparkles, ArrowRight, Loader2 } from 'lucide-react';
 import { PLANS, PLAN_FEATURES, PLAN_LIMITS, CURRENCY, planById, type PlanId } from '@/lib/plans';
 import { useState } from 'react';
+import { api } from '@/lib/api';
 
-// In-app upgrade screen: current plan, full plan comparison, and the CTA that will
-// hand off to the payment provider. The payment integration plugs into `onChoose`
-// (see the TODO) — everything up to the checkout is built.
+const SALES_EMAIL = process.env.NEXT_PUBLIC_SALES_EMAIL || 'sales@wa-lead-crm.com';
+
+// In-app upgrade screen: current plan, full plan comparison, and the CTA that hands
+// off to the payment provider's hosted page. The price shown here is presentational —
+// the server charges from its own price table, so nothing here can alter the amount.
 export function UpgradeScreen({ currentPlan, onBack }: { currentPlan: PlanId; onBack: () => void }) {
   const [yearly, setYearly] = useState(false);
+  const [pending, setPending] = useState<PlanId | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const cur = planById(currentPlan);
 
-  const choose = (planId: PlanId) => {
-    // ── PAYMENT INTEGRATION POINT ──────────────────────────────────────────────
-    // Wire a checkout here (Cardcom / Tranzila / Stripe): create a charge for `planId`
-    // (monthly or yearly per `yearly`), and on success PATCH the tenant plan server-side.
-    // Until then, route the user to contact for manual activation.
+  // Falls back to email only when the backend says no terminal is configured — a
+  // real checkout failure must surface as an error, not as a silent mailto.
+  const contactSales = (planId: PlanId) => {
     const price = yearly ? planById(planId).annualMonthly : planById(planId).monthly;
     const cycle = yearly ? 'שנתי' : 'חודשי';
-    window.location.href = `mailto:sales@example.com?subject=${encodeURIComponent(`שדרוג למסלול ${planById(planId).name}`)}&body=${encodeURIComponent(`אני רוצה לשדרג למסלול ${planById(planId).name} (${cycle}, ${CURRENCY}${price}/חודש).`)}`;
+    window.location.href = `mailto:${SALES_EMAIL}?subject=${encodeURIComponent(`שדרוג למסלול ${planById(planId).name}`)}&body=${encodeURIComponent(`אני רוצה לשדרג למסלול ${planById(planId).name} (${cycle}, ${CURRENCY}${price}/חודש).`)}`;
+  };
+
+  const choose = async (planId: PlanId) => {
+    if (planId === 'TRIAL' || pending) return;
+    setPending(planId);
+    setError(null);
+    try {
+      const { redirectUrl } = await api.billing.checkout(planId, yearly ? 'yearly' : 'monthly');
+      window.location.href = redirectUrl;
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : 'שגיאה';
+      // 503 from the checkout route = no payment terminal configured yet.
+      if (msg.includes('הסליקה אינה מוגדרת')) {
+        contactSales(planId);
+        return;
+      }
+      setError(msg);
+      setPending(null);
+    }
   };
 
   return (
@@ -47,6 +69,12 @@ export function UpgradeScreen({ currentPlan, onBack }: { currentPlan: PlanId; on
           <span className={`text-sm ${yearly ? 'font-bold text-slate-800' : 'text-slate-400'}`}>שנתי <span className="text-green-600 font-semibold">(חסכון ~2 חודשים)</span></span>
         </div>
 
+        {error && (
+          <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 text-center">
+            {error}
+          </div>
+        )}
+
         {/* Plan cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
           {PLANS.map((p) => {
@@ -69,7 +97,14 @@ export function UpgradeScreen({ currentPlan, onBack }: { currentPlan: PlanId; on
                 ) : p.id === 'TRIAL' ? (
                   <button disabled className="w-full py-2.5 rounded-xl bg-slate-50 text-slate-300 text-sm font-semibold cursor-default">—</button>
                 ) : (
-                  <button onClick={() => choose(p.id)} className={`w-full py-2.5 rounded-xl text-sm font-semibold transition ${p.highlight ? 'bg-brand-600 hover:bg-brand-700 text-white shadow-soft' : 'bg-brand-50 hover:bg-brand-100 text-brand-700'}`}>{p.cta}</button>
+                  <button
+                    onClick={() => choose(p.id)}
+                    disabled={pending !== null}
+                    className={`w-full py-2.5 rounded-xl text-sm font-semibold transition inline-flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-wait ${p.highlight ? 'bg-brand-600 hover:bg-brand-700 text-white shadow-soft' : 'bg-brand-50 hover:bg-brand-100 text-brand-700'}`}
+                  >
+                    {pending === p.id && <Loader2 className="w-4 h-4 animate-spin" />}
+                    {pending === p.id ? 'מעביר לתשלום…' : p.cta}
+                  </button>
                 )}
               </div>
             );

@@ -104,6 +104,20 @@ model Tenant {
   widgetKey          String? @unique
   widgetEnabled      Boolean @default(false)
   widgetConfig       Json?
+  // ─── Paid subscription ──────────────────────────────────────────────────────
+  // Adapter that owns this subscription ('cardcom'); NULL until the first payment.
+  billingProvider    String?
+  // Provider token for recurring charges. NOT a card number — the provider keeps
+  // those; this is an opaque handle that only our terminal can charge.
+  billingToken       String?
+  billingCycle       String?   // 'monthly' | 'yearly'
+  // 'none' | 'active' | 'past_due' | 'canceled'. Drives the read-only lock for paid
+  // tenants the same way trialEndsAt does for trials.
+  subStatus          String    @default("none")
+  // Paid through this date. A renewal job fires here; failure moves us to past_due.
+  currentPeriodEnd   DateTime?
+  // Set when the customer stops auto-renewal: service runs to currentPeriodEnd, then stops.
+  cancelAtPeriodEnd  Boolean   @default(false)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
 
@@ -115,6 +129,7 @@ model Tenant {
   automations  AutomationWebhook[]
   jobs         Job[]
   campaigns    Campaign[]
+  payments     Payment[]
   // Real-estate domain (added in phase-2 integration)
   deals        Deal[]
   properties   Property[]
@@ -507,4 +522,29 @@ model REClient {
   updatedAt  DateTime @updatedAt
 
   @@index([tenantId])
+}
+
+// One row per settled charge — the billing audit trail behind the subscription
+// state on Tenant. Also the idempotency ledger: providers retry webhooks
+// aggressively, and (provider, providerRef) being unique means a replayed
+// callback can never hand out a second billing period for the same money.
+model Payment {
+  id          String     @id @default(cuid())
+  tenantId    String
+  tenant      Tenant     @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  provider    String     // adapter id, e.g. 'cardcom'
+  providerRef String     // the provider's own transaction id
+  plan        TenantPlan
+  cycle       String     // 'monthly' | 'yearly'
+  amount      Int        // agorot — integers only, never floats for money
+  currency    String     @default("ILS")
+  status      String     // 'paid' | 'failed'
+  periodStart DateTime
+  periodEnd   DateTime
+  invoiceUrl  String?    // provider-hosted tax invoice, when it issues one
+  raw         Json?      // verified provider response, for disputes
+  createdAt   DateTime   @default(now())
+
+  @@unique([provider, providerRef])
+  @@index([tenantId, createdAt])
 }

@@ -21,6 +21,7 @@ import { waImportRouter } from './routes/waImport';
 import { widgetRouter } from './routes/widget';
 import { pushRouter } from './routes/push';
 import { campaignsRouter } from './routes/campaigns';
+import { billingRouter, billingWebhookRouter } from './routes/billing';
 import { WIDGET_JS } from './lib/widgetScript';
 import { startJobRunner, stopJobRunner } from './lib/jobs';
 import { ensureWebhookSecrets } from './lib/webhookSecrets';
@@ -99,6 +100,11 @@ app.get('/widget.js', (_req, res) => {
 });
 app.use('/api/widget', cors({ origin: true }), express.json({ limit: '256kb' }), widgetRouter);
 
+// Payment-provider callbacks arrive from the provider's servers, not a browser, so
+// they must clear the CORS wall the same way the widget does. Safety does not come
+// from the origin here: the adapter re-queries the provider before believing anything.
+app.use('/api/billing/webhook', express.json({ limit: '256kb' }), express.urlencoded({ extended: false, limit: '256kb' }), billingWebhookRouter);
+
 app.use(cors({
   origin: corsOrigin,
   credentials: true,
@@ -144,6 +150,8 @@ app.use('/api/realestate', requireAuth, requireActiveTrial, realestateRouter);
 // /tenant is intentionally NOT trial-guarded: an expired tenant must still be able to
 // view settings and manage its account (the path to upgrading).
 app.use('/api/tenant', requireAuth, tenantRouter);          // per-tenant settings
+// Also deliberately un-guarded: paying is how a locked account gets unlocked.
+app.use('/api/billing', requireAuth, billingRouter);        // subscription + checkout
 app.use('/api/super-admin', requireAuth, superAdminRouter); // super-admin only
 
 // ─── Socket.io — tenant rooms ─────────────────────────────────────────────────
