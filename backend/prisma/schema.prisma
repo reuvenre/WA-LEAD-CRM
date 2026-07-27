@@ -78,6 +78,13 @@ model Tenant {
   // When the free trial ends. Past this, a TRIAL tenant is read-only until upgrade.
   // NULL = no deadline (paid plans, or legacy tenants).
   trialEndsAt  DateTime?
+  // Which trial nudge emails already went out ('soon' | 'last_day' | 'expired').
+  // Claimed atomically before sending, so a stage can never be emailed twice.
+  trialNudges  String[]   @default([])
+  // Win-back: a time-boxed discount granted when a trial lapses without upgrading.
+  // Applies to the next payment only; renewals always charge list price.
+  winbackPercent Int?
+  winbackUntil   DateTime?
   // Account offboarding: when the customer cancelled, and when their data gets purged
   // (canceledAt + 30d). During the window the account is read-only + reactivatable.
   canceledAt   DateTime?
@@ -136,6 +143,9 @@ model Tenant {
   reProjects   REProject[]
   listings     Listing[]
   reClients    REClient[]
+
+  // The trial sweep scans for trials nearing expiry on every pass.
+  @@index([plan, trialEndsAt])
 }
 
 model User {

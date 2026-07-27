@@ -35,6 +35,10 @@ export interface BillingStatus {
   graceDays: number;
   /** False when no payment terminal is configured — the UI falls back to contact-us. */
   checkoutAvailable: boolean;
+  /** Live win-back offer, 0 when there is none. Applies to the first payment only. */
+  discountPercent: number;
+  discountUntil: string | null;
+  /** Admins only — empty for other roles. */
   payments: BillingPaymentRow[];
 }
 

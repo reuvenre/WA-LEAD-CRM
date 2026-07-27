@@ -1,8 +1,8 @@
 import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import {
-  applyPayment, billingConfigured, frontendUrl, apiUrl, planPrice, providerFor,
-  signIntent, verifyIntent, subscriptionLocked, PAST_DUE_GRACE_DAYS,
+  applyPayment, billingConfigured, frontendUrl, apiUrl, priceFor, providerFor,
+  signIntent, verifyIntent, subscriptionLocked, winbackPercentFor, PAST_DUE_GRACE_DAYS,
 } from '../lib/billing';
 import type { BillingCycle, PaidPlan } from '../lib/billing/types';
 
@@ -39,7 +39,7 @@ billingRouter.get('/', async (req: Request, res: Response) => {
     where: { id: req.user!.tenantId },
     select: {
       plan: true, subStatus: true, billingCycle: true, currentPeriodEnd: true,
-      cancelAtPeriodEnd: true, billingProvider: true,
+      cancelAtPeriodEnd: true, billingProvider: true, winbackPercent: true, winbackUntil: true,
     },
   });
   if (!tenant) return res.status(404).json({ error: 'לא נמצא' });
@@ -65,6 +65,9 @@ billingRouter.get('/', async (req: Request, res: Response) => {
     locked: subscriptionLocked(tenant),
     graceDays: PAST_DUE_GRACE_DAYS,
     checkoutAvailable: billingConfigured(),
+    // 0 when there is no live offer, so the UI can just test for truthiness.
+    discountPercent: winbackPercentFor(tenant),
+    discountUntil: winbackPercentFor(tenant) ? tenant.winbackUntil?.toISOString() ?? null : null,
     payments,
   });
 });
@@ -84,21 +87,24 @@ billingRouter.post('/checkout', async (req: Request, res: Response) => {
 
   const tenant = await prisma.tenant.findUnique({
     where: { id: req.user!.tenantId },
-    select: { id: true, name: true, email: true },
+    select: { id: true, name: true, email: true, winbackPercent: true, winbackUntil: true },
   });
   if (!tenant) return res.status(404).json({ error: 'לא נמצא' });
 
-  const ref = signIntent({ tenantId: tenant.id, plan, cycle });
+  // Read from the server-side price table plus this tenant's own live discount —
+  // never from the request. The figure is then sealed into the signed ref, so the
+  // callback checks against exactly what we authorised here.
+  const amount = priceFor(tenant, plan, cycle);
+  const ref = signIntent({ tenantId: tenant.id, plan, cycle, amount });
 
   try {
-    // The amount is read from the server-side price table — never from the request.
     const { redirectUrl } = await provider.createCheckout({
       tenantId: tenant.id,
       tenantName: tenant.name,
       email: tenant.email,
       plan,
       cycle,
-      amount: planPrice(plan, cycle),
+      amount,
       ref,
       successUrl: `${frontendUrl()}/billing/return?status=success`,
       failureUrl: `${frontendUrl()}/billing/return?status=failed`,
@@ -159,11 +165,12 @@ billingWebhookRouter.post('/:provider', async (req: Request, res: Response) => {
       return res.json({ ok: true, applied: false });
     }
 
-    // Guard against a tampered hosted page: the money that actually moved must
-    // match this plan's price, or we do not grant the plan.
-    const expected = planPrice(intent.plan, intent.cycle);
-    if (settled.amount !== expected) {
-      console.warn(`[billing] amount mismatch for ${intent.tenantId}: charged ${settled.amount}, expected ${expected}`);
+    // Guard against a tampered hosted page: the money that actually moved must match
+    // the figure we sealed into the signed ref at checkout. Comparing against the
+    // signature rather than a fresh price lookup means a discount that lapsed while
+    // the customer was paying cannot reject a payment we already took.
+    if (settled.amount !== intent.amount) {
+      console.warn(`[billing] amount mismatch for ${intent.tenantId}: charged ${settled.amount}, authorised ${intent.amount}`);
       return res.json({ ok: true, applied: false });
     }
 

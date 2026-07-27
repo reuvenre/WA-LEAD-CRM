@@ -24,6 +24,7 @@ import { campaignsRouter } from './routes/campaigns';
 import { billingRouter, billingWebhookRouter } from './routes/billing';
 import { WIDGET_JS } from './lib/widgetScript';
 import { startJobRunner, stopJobRunner } from './lib/jobs';
+import { startTrialSweep, stopTrialSweep } from './lib/trialReminders';
 import { ensureWebhookSecrets } from './lib/webhookSecrets';
 import { requireAuth } from './middleware/auth';
 import { requireFeature, requireActiveTrial } from './lib/entitlements';
@@ -191,6 +192,9 @@ httpServer.listen(PORT, '::', () => {
   console.log(`🚀 Server running on port ${PORT} (bound to :: / dual-stack)`);
   console.log(`🔌 Socket.io with tenant rooms enabled`);
   startJobRunner();
+  // Backfills trial nudges the per-tenant jobs missed — tenants that predate the
+  // feature, or nudges that came due while the server was down.
+  startTrialSweep();
   // Self-heal: mint + activate webhook secrets for legacy tenants (see lib/webhookSecrets.ts).
   void ensureWebhookSecrets().catch((e) => console.error('webhook-secret sweep failed:', e));
 });
@@ -212,6 +216,7 @@ async function shutdown(signal: string) {
   shuttingDown = true;
   console.log(`⏳ ${signal} received — shutting down gracefully…`);
   stopJobRunner();
+  stopTrialSweep();
   io.close();
   httpServer.close(() => console.log('✅ HTTP server closed'));
   try { await prisma.$disconnect(); } catch { /* ignore */ }

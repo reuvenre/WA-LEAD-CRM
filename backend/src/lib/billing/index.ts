@@ -62,6 +62,13 @@ export interface CheckoutIntent {
   tenantId: string;
   plan: PaidPlan;
   cycle: BillingCycle;
+  /**
+   * Agorot authorised for THIS checkout, carried inside the signature. The callback
+   * verifies against this rather than recomputing the price, so a win-back discount
+   * that expires while the customer is on the payment page cannot make their
+   * successful payment fail its price check.
+   */
+  amount: number;
 }
 
 // Derived rather than using JWT_SECRET directly: one key, one job. Rotating session
@@ -69,24 +76,49 @@ export interface CheckoutIntent {
 const INTENT_KEY = crypto.createHmac('sha256', JWT_SECRET).update('billing-intent-v1').digest();
 
 export function signIntent(intent: CheckoutIntent): string {
-  const body = `${intent.tenantId}.${intent.plan}.${intent.cycle}`;
+  const body = `${intent.tenantId}.${intent.plan}.${intent.cycle}.${intent.amount}`;
   return `${body}.${crypto.createHmac('sha256', INTENT_KEY).update(body).digest('base64url')}`;
 }
 
 export function verifyIntent(ref: string | null): CheckoutIntent | null {
   if (!ref) return null;
   const parts = ref.split('.');
-  if (parts.length !== 4) return null;
-  const [tenantId, plan, cycle] = parts;
+  if (parts.length !== 5) return null;
+  const [tenantId, plan, cycle, rawAmount] = parts;
   if (plan !== 'BASIC' && plan !== 'PRO') return null;
   if (cycle !== 'monthly' && cycle !== 'yearly') return null;
+  const amount = Number(rawAmount);
+  if (!Number.isInteger(amount) || amount <= 0) return null;
 
   // Constant-time: this signature is the only thing standing between a callback and a
   // free plan, so it must not leak how far a guess got via response timing.
-  const expected = Buffer.from(signIntent({ tenantId, plan, cycle }));
+  const expected = Buffer.from(signIntent({ tenantId, plan, cycle, amount }));
   const actual = Buffer.from(ref);
   if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) return null;
-  return { tenantId, plan, cycle };
+  return { tenantId, plan, cycle, amount };
+}
+
+// ─── Win-back discount ───────────────────────────────────────────────────────
+// Granted by the trial-expiry email (lib/trialReminders). Applies to the next
+// payment only — renewals always charge list price, which is why the renewal job
+// reads PLAN_PRICES directly rather than going through priceFor().
+export interface WinbackView {
+  winbackPercent: number | null;
+  winbackUntil: Date | null;
+}
+
+export function winbackPercentFor(t: WinbackView, now: Date = new Date()): number {
+  if (!t.winbackPercent || !t.winbackUntil || t.winbackUntil.getTime() <= now.getTime()) return 0;
+  // Clamped: a bad value in the column must never be able to produce a free or
+  // negative charge.
+  return Math.min(90, Math.max(0, t.winbackPercent));
+}
+
+/** What THIS tenant pays right now, discount included. */
+export function priceFor(t: WinbackView, plan: PaidPlan, cycle: BillingCycle): number {
+  const list = PLAN_PRICES[plan][cycle];
+  const pct = winbackPercentFor(t);
+  return pct ? Math.round((list * (100 - pct)) / 100) : list;
 }
 
 // ─── Access lock ─────────────────────────────────────────────────────────────
@@ -166,9 +198,17 @@ export async function applyPayment(args: {
       trialEndsAt: null,
       canceledAt: null,
       purgeAt: null,
+      // The win-back offer has done its job; it must not silently discount the next
+      // purchase too.
+      winbackPercent: null,
+      winbackUntil: null,
     },
   });
 
+  // Stop the trial nudges — nothing reads worse than "your trial is ending" landing
+  // an hour after someone paid. (Called directly rather than via lib/trialReminders
+  // to keep that module's import of this one one-directional.)
+  await cancelPendingJobs(tenantId, 'trial_nudge', 'tenantId', tenantId);
   await scheduleRenewal(tenantId, end);
   return true;
 }

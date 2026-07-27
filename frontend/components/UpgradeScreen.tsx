@@ -1,8 +1,8 @@
 'use client';
 
-import { Check, Minus, Sparkles, ArrowRight, Loader2 } from 'lucide-react';
+import { Check, Minus, Sparkles, ArrowRight, Loader2, PartyPopper } from 'lucide-react';
 import { PLANS, PLAN_FEATURES, PLAN_LIMITS, CURRENCY, planById, type PlanId } from '@/lib/plans';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 
 const SALES_EMAIL = process.env.NEXT_PUBLIC_SALES_EMAIL || 'sales@wa-lead-crm.com';
@@ -14,7 +14,22 @@ export function UpgradeScreen({ currentPlan, onBack }: { currentPlan: PlanId; on
   const [yearly, setYearly] = useState(false);
   const [pending, setPending] = useState<PlanId | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [discount, setDiscount] = useState(0);
+  const [discountUntil, setDiscountUntil] = useState<string | null>(null);
   const cur = planById(currentPlan);
+
+  // A lapsed trial may be carrying a win-back offer. The server is the authority on
+  // whether it's still live — this only mirrors it, and the charged amount is
+  // computed server-side regardless of what's rendered here.
+  useEffect(() => {
+    let alive = true;
+    api.billing.status()
+      .then((s) => { if (alive) { setDiscount(s.discountPercent || 0); setDiscountUntil(s.discountUntil); } })
+      .catch(() => { /* the price grid is still correct without it */ });
+    return () => { alive = false; };
+  }, []);
+
+  const discounted = (price: number) => Math.round((price * (100 - discount)) / 100);
 
   // Falls back to email only when the backend says no terminal is configured — a
   // real checkout failure must surface as an error, not as a silent mailto.
@@ -69,6 +84,20 @@ export function UpgradeScreen({ currentPlan, onBack }: { currentPlan: PlanId; on
           <span className={`text-sm ${yearly ? 'font-bold text-slate-800' : 'text-slate-400'}`}>שנתי <span className="text-green-600 font-semibold">(חסכון ~2 חודשים)</span></span>
         </div>
 
+        {discount > 0 && (
+          <div className="mb-6 rounded-xl border border-brand-200 bg-brand-50 px-4 py-3 text-center">
+            <div className="inline-flex items-center gap-2 text-brand-700 font-bold">
+              <PartyPopper className="w-5 h-5" />
+              {discount}% הנחה על התשלום הראשון
+            </div>
+            {discountUntil && (
+              <div className="text-xs text-brand-600 mt-0.5">
+                בתוקף עד {new Date(discountUntil).toLocaleDateString('he-IL')} — ההנחה מוחלת אוטומטית בתשלום
+              </div>
+            )}
+          </div>
+        )}
+
         {error && (
           <div className="mb-6 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700 text-center">
             {error}
@@ -88,6 +117,13 @@ export function UpgradeScreen({ currentPlan, onBack }: { currentPlan: PlanId; on
                 <div className="my-3">
                   {price === 0 || price == null ? (
                     <span className="text-2xl font-bold text-slate-800">חינם</span>
+                  ) : discount > 0 && p.id !== 'TRIAL' ? (
+                    <>
+                      <span className="text-lg text-slate-400 line-through">{CURRENCY}{price}</span>{' '}
+                      <span className="text-3xl font-bold text-brand-600">{CURRENCY}{discounted(price)}</span>
+                      <span className="text-sm text-slate-500"> / חודש</span>
+                      <div className="text-xs font-semibold text-brand-600 mt-0.5">לתשלום הראשון, אח״כ {CURRENCY}{price}</div>
+                    </>
                   ) : (
                     <><span className="text-3xl font-bold text-slate-800">{CURRENCY}{price}</span><span className="text-sm text-slate-500"> / חודש</span></>
                   )}

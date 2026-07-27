@@ -11,6 +11,7 @@ import { seedDefaultTemplates } from './templates';
 import { isGoogleConfigured, buildLoginAuthUrl, exchangeLoginCode, getGoogleUserInfo } from '../lib/google';
 import { JWT_SECRET } from '../lib/config';
 import { TRIAL_DAYS } from '../lib/entitlements';
+import { scheduleTrialNudges } from '../lib/trialReminders';
 
 export const authRouter = Router();
 
@@ -117,6 +118,13 @@ authRouter.post('/register', async (req: Request, res: Response) => {
 
   // Seed default Hebrew quick-reply templates so the app isn't empty on day one.
   await seedDefaultTemplates(tenant.id).catch((e) => console.warn('seed templates failed:', (e as Error).message));
+
+  // Queue the trial nudges. Best-effort: a failure here must never cost us the
+  // signup, and the periodic sweep backfills anything that didn't get queued.
+  if (tenant.trialEndsAt) {
+    await scheduleTrialNudges(tenant.id, tenant.trialEndsAt).catch((e) =>
+      console.warn('schedule trial nudges failed:', (e as Error).message));
+  }
 
   const user = tenant.users[0];
   const token = signToken({ userId: user.id, tenantId: tenant.id, tenantName: tenant.name, username: user.username, role: user.role as AuthPayload['role'] });
