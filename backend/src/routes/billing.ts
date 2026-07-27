@@ -14,8 +14,12 @@ export const billingWebhookRouter = Router();
 const ADMIN_ROLES = ['ADMIN', 'SUPER_ADMIN'];
 
 // Money decisions belong to the account owner, not to every manager on the team.
+function isTenantAdmin(req: Request): boolean {
+  return ADMIN_ROLES.includes(req.user!.role);
+}
+
 function requireTenantAdmin(req: Request, res: Response): boolean {
-  if (!ADMIN_ROLES.includes(req.user!.role)) {
+  if (!isTenantAdmin(req)) {
     res.status(403).json({ error: 'רק אדמין יכול לנהל את המנוי והתשלומים' });
     return false;
   }
@@ -40,12 +44,17 @@ billingRouter.get('/', async (req: Request, res: Response) => {
   });
   if (!tenant) return res.status(404).json({ error: 'לא נמצא' });
 
-  const payments = await prisma.payment.findMany({
-    where: { tenantId: req.user!.tenantId, status: 'paid' },
-    orderBy: { createdAt: 'desc' },
-    take: 12,
-    select: { id: true, amount: true, currency: true, plan: true, cycle: true, periodEnd: true, invoiceUrl: true, createdAt: true },
-  });
+  // Every role needs the plan/lock state (the upgrade UI reads it), but receipts and
+  // their invoice links — which resolve to a document carrying the owner's billing
+  // details — stay with the admin, like the rest of this router.
+  const payments = isTenantAdmin(req)
+    ? await prisma.payment.findMany({
+        where: { tenantId: req.user!.tenantId, status: 'paid' },
+        orderBy: { createdAt: 'desc' },
+        take: 12,
+        select: { id: true, amount: true, currency: true, plan: true, cycle: true, periodEnd: true, invoiceUrl: true, createdAt: true },
+      })
+    : [];
 
   return res.json({
     plan: tenant.plan,

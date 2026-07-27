@@ -64,10 +64,13 @@ export interface CheckoutIntent {
   cycle: BillingCycle;
 }
 
+// Derived rather than using JWT_SECRET directly: one key, one job. Rotating session
+// signing then can't silently invalidate in-flight checkouts, and vice versa.
+const INTENT_KEY = crypto.createHmac('sha256', JWT_SECRET).update('billing-intent-v1').digest();
+
 export function signIntent(intent: CheckoutIntent): string {
   const body = `${intent.tenantId}.${intent.plan}.${intent.cycle}`;
-  const sig = crypto.createHmac('sha256', JWT_SECRET).update(body).digest('base64url').slice(0, 24);
-  return `${body}.${sig}`;
+  return `${body}.${crypto.createHmac('sha256', INTENT_KEY).update(body).digest('base64url')}`;
 }
 
 export function verifyIntent(ref: string | null): CheckoutIntent | null {
@@ -75,9 +78,14 @@ export function verifyIntent(ref: string | null): CheckoutIntent | null {
   const parts = ref.split('.');
   if (parts.length !== 4) return null;
   const [tenantId, plan, cycle] = parts;
-  if (signIntent({ tenantId, plan: plan as PaidPlan, cycle: cycle as BillingCycle }) !== ref) return null;
   if (plan !== 'BASIC' && plan !== 'PRO') return null;
   if (cycle !== 'monthly' && cycle !== 'yearly') return null;
+
+  // Constant-time: this signature is the only thing standing between a callback and a
+  // free plan, so it must not leak how far a guess got via response timing.
+  const expected = Buffer.from(signIntent({ tenantId, plan, cycle }));
+  const actual = Buffer.from(ref);
+  if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) return null;
   return { tenantId, plan, cycle };
 }
 

@@ -56,16 +56,67 @@ function pick(obj: unknown, ...path: string[]): unknown {
   return cur;
 }
 
-/** Build a SettledPayment from a verified Cardcom transaction result. */
-function toSettled(res: CardcomResponse): SettledPayment | null {
-  // The transaction block is what proves money moved — a LowProfile page that was
-  // merely opened and abandoned still returns a result object without one.
-  const tran = (res.TranzactionInfo ?? res.TranzactionInformation) as Record<string, unknown> | undefined;
-  const tranId = tran?.TranzactionId ?? res.TranzactionId ?? res.InternalDealNumber;
-  if (!tranId) return null;
+// Card data and the reusable charge token must not sit in our ledger. We keep the
+// response for dispute resolution, minus anything that is a credential or an identity
+// document. Matching is on the lowercased key, since Cardcom's casing varies by field.
+const REDACTED_KEYS = new Set([
+  'token', 'cardnumber', 'cardowneridentitynumber', 'cardownerid',
+  'cardvalidityyear', 'cardvaliditymonth', 'cardexpirationmm', 'cardexpirationyy',
+  'apiname', 'terminalnumber',
+]);
 
-  const amountShekels = (tran?.Amount ?? res.Amount) as number | undefined;
-  if (amountShekels === undefined) return null;
+function redact(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redact);
+  if (value === null || typeof value !== 'object') return value;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+    out[k] = REDACTED_KEYS.has(k.toLowerCase()) ? '[redacted]' : redact(v);
+  }
+  return out;
+}
+
+/**
+ * Build a SettledPayment from a Cardcom result — or null if the money did not move.
+ *
+ * FAILS CLOSED. If the fields below don't match your terminal's API generation this
+ * returns null and no plan is granted, rather than handing out subscriptions for
+ * declined cards. The rejection is logged with the codes it saw, so the very first
+ * sandbox transaction tells you whether the field names need adjusting.
+ */
+function toSettled(res: CardcomResponse): SettledPayment | null {
+  const tran = (res.TranzactionInfo ?? res.TranzactionInformation) as Record<string, unknown> | undefined;
+
+  // A transaction block proves an attempt was RECORDED, not that it was approved — a
+  // decline still gets a deal number. The envelope ResponseCode checked by the caller
+  // only says the lookup succeeded, so the authorization result must be read here.
+  if (!tran || Number(tran.ResponseCode) !== 0) {
+    console.warn('[cardcom] not settling: transaction absent or not approved', {
+      envelope: res.ResponseCode, transaction: tran?.ResponseCode, description: tran?.Description ?? res.Description,
+    });
+    return null;
+  }
+
+  // ChargeAndCreateToken settles two halves that can succeed independently; when the
+  // charge half reports its own status, it has to have succeeded as well.
+  if (res.OperationResponse !== undefined && Number(res.OperationResponse) !== 0) {
+    console.warn('[cardcom] not settling: operation half failed', { operation: res.OperationResponse });
+    return null;
+  }
+
+  const tranId = tran.TranzactionId ?? tran.InternalDealNumber;
+  if (!tranId) {
+    console.warn('[cardcom] not settling: approved transaction carries no id');
+    return null;
+  }
+
+  // Strictly the captured amount. Falling back to the top-level Amount would echo the
+  // sum we REQUESTED, which would reduce the caller's price check to comparing our own
+  // price table against itself and let a zero or partial capture buy a full plan.
+  const amountShekels = tran.Amount;
+  if (typeof amountShekels !== 'number') {
+    console.warn('[cardcom] not settling: no captured amount on the transaction');
+    return null;
+  }
 
   return {
     providerRef: String(tranId),
@@ -73,7 +124,7 @@ function toSettled(res: CardcomResponse): SettledPayment | null {
     ref: (res.ReturnValue as string | undefined) ?? null,
     token: (pick(res, 'TokenInfo', 'Token') as string | undefined) ?? null,
     invoiceUrl: (pick(res, 'DocumentInfo', 'DocumentUrl') as string | undefined) ?? null,
-    raw: res,
+    raw: redact(res),
   };
 }
 
