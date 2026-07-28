@@ -5,6 +5,7 @@ import {
   signIntent, verifyIntent, subscriptionLocked, winbackPercentFor, PAST_DUE_GRACE_DAYS,
 } from '../lib/billing';
 import type { BillingCycle, PaidPlan } from '../lib/billing/types';
+import { rateLimited } from '../lib/rateLimit';
 
 /** Authenticated subscription management. Mounted behind requireAuth. */
 export const billingRouter = Router();
@@ -139,18 +140,8 @@ billingRouter.post('/resume', async (req: Request, res: Response) => {
 // Nothing here trusts the request body beyond a transaction handle: the adapter
 // re-queries the provider, and the plan/tenant come from our own signed ref. A
 // forged POST therefore buys nothing — worst case it wastes one outbound call.
-const seen = new Map<string, number>();
-function tooMany(ip: string, max = 60, windowMs = 60_000): boolean {
-  const now = Date.now();
-  for (const [k, t] of seen) if (now - t > windowMs) seen.delete(k);
-  const key = `${ip}|${Math.floor(now / windowMs)}`;
-  const n = (seen.get(key) ?? 0) + 1;
-  seen.set(key, n);
-  return n > max;
-}
-
 billingWebhookRouter.post('/:provider', async (req: Request, res: Response) => {
-  if (tooMany(req.ip ?? 'ip')) return res.status(429).json({ ok: false });
+  if (rateLimited(`billing-hook|${req.ip ?? 'ip'}`, 60)) return res.status(429).json({ ok: false });
 
   const provider = providerFor(req.params.provider);
   if (!provider) return res.status(404).json({ ok: false });

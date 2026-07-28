@@ -3,12 +3,20 @@
 // Vanilla JS, Shadow DOM (style isolation from the host site), RTL Hebrew, 4s polling.
 // It reads its tenant key from the <script data-key> tag and the API base from its own src.
 
-export const WIDGET_JS = String.raw`(function () {
+// The marketing site the credit line links back to. Resolved at import time from the
+// same env the rest of the backend uses, then substituted into the script body — the
+// widget runs on the CUSTOMER's domain, so it can't infer our site from its own origin.
+const SITE_URL = (process.env.FRONTEND_URL || 'https://wa-lead-crm.vercel.app')
+  .split(',')[0]
+  .replace(/\/+$/, '');
+
+const WIDGET_JS_TEMPLATE = String.raw`(function () {
   var script = document.currentScript;
   if (!script) return;
   var KEY = script.getAttribute('data-key');
   if (!KEY) { console.warn('[wa-widget] missing data-key'); return; }
   var BASE;
+  var SITE = '__SITE_URL__';
   try { BASE = new URL(script.src).origin; } catch (e) { return; }
 
   var VKEY = 'wa_widget_visitor';
@@ -27,7 +35,7 @@ export const WIDGET_JS = String.raw`(function () {
     localStorage.setItem(VKEY, visitorId);
   }
 
-  var config = { title: 'צ׳אט', greeting: '', color: '#25D366' };
+  var config = { title: 'צ׳אט', greeting: '', color: '#25D366', branded: true };
   // lastTs (the poll cursor) is advanced ONLY from server-supplied timestamps: the
   // visitor's clock may be minutes off, and a locally-stamped cursor either hides
   // agent replies (fast clock) or duplicates messages (slow clock).
@@ -61,7 +69,7 @@ export const WIDGET_JS = String.raw`(function () {
     '.ftr{display:flex;gap:6px;padding:10px;border-top:1px solid #eef0f4;background:#fff}',
     '.ftr input{flex:1;border:1px solid #e3e7ee;border-radius:10px;padding:9px 11px;font-size:14px;outline:none}',
     '.ftr button{border:none;border-radius:10px;color:#fff;padding:0 14px;cursor:pointer;font-weight:600;font-size:14px}',
-    '.pw{font-size:10px;color:#9aa4b2;text-align:center;padding:4px}'
+    '.pw{display:block;font-size:10px;color:#9aa4b2;text-align:center;padding:4px;text-decoration:none}'
   ].join('');
   root.appendChild(style);
 
@@ -76,7 +84,7 @@ export const WIDGET_JS = String.raw`(function () {
     '<div class="hd"><span class="ttl"></span><button aria-label="close">×</button></div>' +
     '<div class="feed"></div>' +
     '<div class="ftr"><input type="text" placeholder="הקלד הודעה..." /><button>שלח</button></div>' +
-    '<div class="pw">מופעל ע״י Real Estate Lead CRM</div>';
+    '<a class="pw" target="_blank" rel="noopener" href="' + SITE + '/?utm_source=widget&utm_medium=referral">מופעל ע״י Real Estate Lead CRM</a>';
   root.appendChild(panel);
 
   var feed = panel.querySelector('.feed');
@@ -90,6 +98,9 @@ export const WIDGET_JS = String.raw`(function () {
     panel.querySelector('.hd').style.background = config.color;
     sendBtn.style.background = config.color;
     titleEl.textContent = config.title;
+    // PRO tenants pay to drop the credit; everyone else keeps the backlink.
+    var pw = panel.querySelector('.pw');
+    if (pw) pw.style.display = config.branded === false ? 'none' : 'block';
   }
 
   function bumpCursor(ts) { if (ts && (!lastTs || ts > lastTs)) lastTs = ts; }
@@ -171,3 +182,5 @@ export const WIDGET_JS = String.raw`(function () {
     else if (open && !pollTimer) { pollTimer = setInterval(poll, 4000); poll(); }
   });
 })();`;
+
+export const WIDGET_JS = WIDGET_JS_TEMPLATE.replace(/__SITE_URL__/g, SITE_URL);

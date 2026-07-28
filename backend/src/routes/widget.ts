@@ -13,6 +13,7 @@ import { pickRoundRobinAssignee } from '../lib/assignment';
 import { handleInboundAutoReply } from '../lib/autoReply';
 import { notifyLeadEvent } from '../lib/push';
 import { classifyOptMessage, handleOptChange } from '../lib/optOut';
+import { rateLimited } from '../lib/rateLimit';
 
 export const widgetRouter = Router();
 
@@ -28,20 +29,6 @@ function configOf(json: unknown): WidgetConfig {
   };
 }
 
-// In-memory sliding-window rate limit (single instance). Keys always include the
-// caller's IP: a visitorId is attacker-chosen, so any limit keyed on it alone is
-// bypassed by simply rotating ids.
-const hits = new Map<string, number[]>();
-function rateLimited(key: string, max = 10, windowMs = 60_000): boolean {
-  const now = Date.now();
-  const arr = (hits.get(key) ?? []).filter((t) => now - t < windowMs);
-  arr.push(now);
-  hits.set(key, arr);
-  if (hits.size > 5000) { // crude cap so the map can't grow unbounded
-    for (const [k, v] of hits) if (v.every((t) => now - t >= windowMs)) hits.delete(k);
-  }
-  return arr.length > max;
-}
 
 // Resolve the tenant for a widget key, enforcing enabled + plan feature. Returns null
 // (→ generic 404) rather than leaking why, so the key can't be probed.
@@ -114,7 +101,14 @@ widgetRouter.post('/session', async (req: Request, res: Response) => {
     }
 
     const messages = await prisma.message.findMany({ where: { leadId: lead.id, tenantId: tenant.id }, orderBy: { timestamp: 'asc' }, take: 100 });
-    return res.json({ leadId: lead.id, config: configOf(tenant.widgetConfig), messages: messages.map(mapMsg) });
+    // The credit line doubles as this product's cheapest acquisition channel, so it
+    // stays on every tier that hasn't paid to remove it.
+    const branded = !entitlementsFor(tenant.plan).features.whiteLabel;
+    return res.json({
+      leadId: lead.id,
+      config: { ...configOf(tenant.widgetConfig), branded },
+      messages: messages.map(mapMsg),
+    });
   } catch (error) {
     console.error('POST /widget/session error:', error);
     return res.status(500).json({ error: 'server error' });
@@ -133,7 +127,7 @@ widgetRouter.post('/message', async (req: Request, res: Response) => {
 
     // Two layers: per-visitor (10/min — a human chatting) and per-IP regardless of
     // visitorId (30/min — rotating visitorIds must not bypass the limit).
-    if (rateLimited(`${req.ip ?? 'ip'}|${visitorId}`)) return res.status(429).json({ error: 'שלחת יותר מדי הודעות — נסה שוב בעוד רגע' });
+    if (rateLimited(`${req.ip ?? 'ip'}|${visitorId}`, 10)) return res.status(429).json({ error: 'שלחת יותר מדי הודעות — נסה שוב בעוד רגע' });
     if (rateLimited(`msg|${req.ip ?? 'ip'}`, 30, 60_000)) return res.status(429).json({ error: 'שלחת יותר מדי הודעות — נסה שוב בעוד רגע' });
 
     const content = String(req.body?.content ?? '').trim().slice(0, 4000);

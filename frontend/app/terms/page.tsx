@@ -1,13 +1,14 @@
 'use client';
 
-import { LegalLayout, LegalSection, PH } from '@/components/marketing/LegalLayout';
+import { LegalLayout, LegalSection, Detail } from '@/components/marketing/LegalLayout';
+import { COMPANY } from '@/lib/company';
 
 export default function TermsPage() {
   return (
     <LegalLayout title="תנאי שימוש" updated="יולי 2026">
       <p>
         תנאי שימוש אלה מסדירים את השימוש שלך בשירות <b>Real Estate Lead CRM</b> (״השירות״),
-        המופעל על ידי <PH>שם העסק הרשום</PH> (<PH>ח.פ. / ע.מ.</PH>) (״אנחנו״, ״החברה״).
+        המופעל על ידי <Detail value={COMPANY.legalName} label="שם העסק הרשום" /> (<Detail value={COMPANY.registration} label="ח.פ. / ע.מ." />) (״אנחנו״, ״החברה״).
         השימוש בשירות מהווה הסכמה לתנאים אלה.
       </p>
 
@@ -20,7 +21,7 @@ export default function TermsPage() {
       </LegalSection>
 
       <LegalSection title="3. תקופת ניסיון, תשלומים וביטול">
-        <p>השירות מוצע עם תקופת ניסיון חינם של 14 יום. בתום התקופה, המשך השימוש כרוך במנוי בתשלום בהתאם למסלול שנבחר. החיוב מתבצע מראש (חודשי או שנתי). מדיניות ההחזרים: <PH>מדיניות החזרים</PH>.</p>
+        <p>השירות מוצע עם תקופת ניסיון חינם של 14 יום. בתום התקופה, המשך השימוש כרוך במנוי בתשלום בהתאם למסלול שנבחר. החיוב מתבצע מראש (חודשי או שנתי). מדיניות ההחזרים: <Detail value={COMPANY.refundPolicy} label="מדיניות החזרים" />.</p>
         <p>ניתן לבטל את המנוי בכל עת מתוך מסך ההגדרות. עם הביטול החשבון עובר למצב <b>קריאה בלבד</b>, והנתונים נשמרים לתקופת חסד של <b>30 יום</b> — בה ניתן לייצא את כל הנתונים או להפעיל את החשבון מחדש. בתום התקופה הנתונים התפעוליים נמחקים לצמיתות (ראה מדיניות הפרטיות).</p>
       </LegalSection>
 
@@ -33,7 +34,7 @@ export default function TermsPage() {
       </LegalSection>
 
       <LegalSection title="6. שינויים ויצירת קשר">
-        <p>אנו רשאים לעדכן תנאים אלה; המשך השימוש לאחר עדכון מהווה הסכמה. הדין החל הוא דיני מדינת ישראל, וסמכות השיפוט הבלעדית נתונה לבתי המשפט ב<PH>עיר</PH>. לשאלות: <PH>אימייל ליצירת קשר</PH>.</p>
+        <p>אנו רשאים לעדכן תנאים אלה; המשך השימוש לאחר עדכון מהווה הסכמה. הדין החל הוא דיני מדינת ישראל, וסמכות השיפוט הבלעדית נתונה לבתי המשפט ב<Detail value={COMPANY.city} label="עיר" />. לשאלות: <Detail value={COMPANY.email} label="אימייל ליצירת קשר" />.</p>
       </LegalSection>
     </LegalLayout>
   );

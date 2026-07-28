@@ -27,6 +27,10 @@ export interface Entitlements {
     webchat: boolean;     // embeddable website chat widget
     broadcast: boolean;   // broadcast campaigns + drip sequences
     csat: boolean;        // post-close satisfaction surveys
+    // Remove the "powered by" credit from the website widget. Deliberately a paid
+    // feature: on the cheaper tiers that credit is a signup link on every customer's
+    // site, which is the cheapest acquisition channel this product has.
+    whiteLabel: boolean;
   };
 }
 
@@ -44,7 +48,7 @@ const BASIC_ENTITLEMENTS: Entitlements = {
     multiLine: false, automations: true, analytics: true, googleCalendar: true,
     apifyLive: false, listings: false, apiAccess: false,
     autoReplies: true, roundRobin: true, scheduledMessages: true, customAttributes: true,
-    webchat: true, broadcast: false, csat: true,
+    webchat: true, broadcast: false, csat: true, whiteLabel: false,
   },
 };
 
@@ -60,7 +64,7 @@ export const ENTITLEMENTS: Record<TenantPlan, Entitlements> = {
       multiLine: true, automations: true, analytics: true, googleCalendar: true,
       apifyLive: true, listings: false, apiAccess: true,
       autoReplies: true, roundRobin: true, scheduledMessages: true, customAttributes: true,
-      webchat: true, broadcast: true, csat: true,
+      webchat: true, broadcast: true, csat: true, whiteLabel: true,
     },
   },
 };

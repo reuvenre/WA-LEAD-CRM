@@ -83,7 +83,7 @@ function redact(value: unknown): unknown {
  * declined cards. The rejection is logged with the codes it saw, so the very first
  * sandbox transaction tells you whether the field names need adjusting.
  */
-function toSettled(res: CardcomResponse): SettledPayment | null {
+export function toSettled(res: CardcomResponse): SettledPayment | null {
   const tran = (res.TranzactionInfo ?? res.TranzactionInformation) as Record<string, unknown> | undefined;
 
   // A transaction block proves an attempt was RECORDED, not that it was approved — a

@@ -1,12 +1,13 @@
 'use client';
 
-import { LegalLayout, LegalSection, PH } from '@/components/marketing/LegalLayout';
+import { LegalLayout, LegalSection, Detail } from '@/components/marketing/LegalLayout';
+import { COMPANY } from '@/lib/company';
 
 export default function AccessibilityPage() {
   return (
     <LegalLayout title="הצהרת נגישות" updated="יולי 2026">
       <p>
-        <b>Real Estate Lead CRM</b>, המופעל על ידי <PH>שם העסק הרשום</PH>, רואה חשיבות רבה
+        <b>Real Estate Lead CRM</b>, המופעל על ידי <Detail value={COMPANY.legalName} label="שם העסק הרשום" />, רואה חשיבות רבה
         בהנגשת השירות לכלל המשתמשים, לרבות אנשים עם מוגבלות, בהתאם לחוק שוויון זכויות לאנשים
         עם מוגבלות, התשנ״ח-1998 ולתקנותיו.
       </p>
@@ -22,9 +23,9 @@ export default function AccessibilityPage() {
       <LegalSection title="פנייה ורכז נגישות">
         <p>
           נתקלת בבעיית נגישות? נשמח לקבל פנייה ולטפל בה בהקדם.
-          <br />רכז/ת נגישות: <PH>שם רכז/ת הנגישות</PH>
-          <br />אימייל: <PH>אימייל ליצירת קשר</PH>
-          <br />טלפון: <PH>טלפון</PH>
+          <br />רכז/ת נגישות: <Detail value={COMPANY.accessibilityOfficer} label="שם רכז/ת הנגישות" />
+          <br />אימייל: <Detail value={COMPANY.email} label="אימייל ליצירת קשר" />
+          <br />טלפון: <Detail value={COMPANY.phone} label="טלפון" />
         </p>
         <p className="text-xs text-slate-400">הצהרה זו עודכנה בהתאם למועד הבדיקה האחרון. יש לעדכן את תאריך הבדיקה ואת פרטי רכז/ת הנגישות בעת ההשקה.</p>
       </LegalSection>

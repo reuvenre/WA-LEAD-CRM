@@ -1,13 +1,14 @@
 'use client';
 
-import { LegalLayout, LegalSection, PH } from '@/components/marketing/LegalLayout';
+import { LegalLayout, LegalSection, Detail } from '@/components/marketing/LegalLayout';
+import { COMPANY } from '@/lib/company';
 
 export default function PrivacyPage() {
   return (
     <LegalLayout title="מדיניות פרטיות" updated="יולי 2026">
       <p>
-        מדיניות זו מסבירה כיצד <b>Real Estate Lead CRM</b>, המופעל על ידי <PH>שם העסק הרשום</PH>
-        (<PH>ח.פ. / ע.מ.</PH>), אוסף ומשתמש במידע. אנו מכבדים את פרטיותך ופועלים בהתאם לחוק
+        מדיניות זו מסבירה כיצד <b>Real Estate Lead CRM</b>, המופעל על ידי <Detail value={COMPANY.legalName} label="שם העסק הרשום" />
+        (<Detail value={COMPANY.registration} label="ח.פ. / ע.מ." />), אוסף ומשתמש במידע. אנו מכבדים את פרטיותך ופועלים בהתאם לחוק
         הגנת הפרטיות, התשמ״א-1981 ולתקנותיו.
       </p>
 
@@ -30,7 +31,7 @@ export default function PrivacyPage() {
       <LegalSection title="5. שמירת מידע, ייצוא ומחיקה">
         <p>אנו שומרים את המידע כל עוד חשבונך פעיל. תוכל לייצא את כל נתוני החשבון שלך בכל עת מתוך מסך ההגדרות (קובץ אחד הכולל לידים, שיחות, פגישות ועוד).</p>
         <p>עם ביטול המנוי, החשבון עובר למצב קריאה בלבד והנתונים נשמרים לתקופת חסד של <b>30 יום</b> — בה ניתן לייצא אותם או להפעיל את החשבון מחדש. בתום התקופה כל הנתונים התפעוליים נמחקים לצמיתות. רשומות חיוב וחשבוניות נשמרות בנפרד לתקופה הנדרשת על פי דיני המס.</p>
-        <p>אתה זכאי לעיין במידע שלך, לתקנו או לבקש את מחיקתו המיידית, בכפוף לחוק. לבקשות בנושא פרטיות: <PH>אימייל ליצירת קשר</PH>.</p>
+        <p>אתה זכאי לעיין במידע שלך, לתקנו או לבקש את מחיקתו המיידית, בכפוף לחוק. לבקשות בנושא פרטיות: <Detail value={COMPANY.email} label="אימייל ליצירת קשר" />.</p>
       </LegalSection>
 
       <LegalSection title="6. עוגיות (Cookies)">
@@ -38,7 +39,7 @@ export default function PrivacyPage() {
       </LegalSection>
 
       <LegalSection title="7. יצירת קשר">
-        <p>בשאלות בנוגע למדיניות זו ניתן לפנות אל <PH>שם העסק הרשום</PH>, כתובת: <PH>כתובת</PH>, אימייל: <PH>אימייל ליצירת קשר</PH>.</p>
+        <p>בשאלות בנוגע למדיניות זו ניתן לפנות אל <Detail value={COMPANY.legalName} label="שם העסק הרשום" />, כתובת: <Detail value={COMPANY.address} label="כתובת" />, אימייל: <Detail value={COMPANY.email} label="אימייל ליצירת קשר" />.</p>
       </LegalSection>
     </LegalLayout>
   );
