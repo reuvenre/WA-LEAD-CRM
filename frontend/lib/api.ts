@@ -18,6 +18,12 @@ export interface REClientRow { id: string; name: string; phone: string | null; c
 
 export interface ScheduledMessage { id: string; runAt: string; content: string }
 
+export interface ApiKeyRow {
+  id: string; name: string; prefix: string;
+  lastUsedAt: string | null; revokedAt: string | null;
+  createdAt: string; createdBy: string | null;
+}
+
 export interface BillingPaymentRow {
   id: string; amount: number; currency: string; plan: string; cycle: string;
   periodEnd: string; invoiceUrl: string | null; createdAt: string;
@@ -239,6 +245,15 @@ export const api = {
       update: (id: string, data: Partial<REClientRow>) => request<REClientRow>(`/api/realestate/clients/${id}`, { method: 'PATCH', body: JSON.stringify(data) }),
       remove: (id: string, deleteLead = false) => request<void>(`/api/realestate/clients/${id}${deleteLead ? '?deleteLead=true' : ''}`, { method: 'DELETE' }),
     },
+  },
+
+  apiKeys: {
+    list: () => request<{ keys: ApiKeyRow[]; available: boolean }>('/api/tenant/api-keys'),
+    // `key` in the response is the only time the plaintext exists outside the caller's
+    // own storage — it is not recoverable afterwards.
+    create: (name: string) =>
+      request<{ id: string; prefix: string; key: string; note: string }>('/api/tenant/api-keys', { method: 'POST', body: JSON.stringify({ name }) }),
+    revoke: (id: string) => request<void>(`/api/tenant/api-keys/${id}`, { method: 'DELETE' }),
   },
 
   billing: {

@@ -22,6 +22,8 @@ import { widgetRouter } from './routes/widget';
 import { pushRouter } from './routes/push';
 import { campaignsRouter } from './routes/campaigns';
 import { billingRouter, billingWebhookRouter } from './routes/billing';
+import { publicApiRouter } from './routes/publicApi';
+import { requireApiKey } from './lib/apiKeys';
 import { WIDGET_JS } from './lib/widgetScript';
 import { startJobRunner, stopJobRunner } from './lib/jobs';
 import { startTrialSweep, stopTrialSweep } from './lib/trialReminders';
@@ -105,6 +107,11 @@ app.use('/api/widget', cors({ origin: true }), express.json({ limit: '256kb' }),
 // they must clear the CORS wall the same way the widget does. Safety does not come
 // from the origin here: the adapter re-queries the provider before believing anything.
 app.use('/api/billing/webhook', express.json({ limit: '256kb' }), express.urlencoded({ extended: false, limit: '256kb' }), billingWebhookRouter);
+
+// The public REST API. Mounted ahead of the CORS wall for the same reason as the
+// widget and the billing webhook: its callers are servers (Make, Zapier, a customer's
+// backend), which send no Origin header. Authentication is the API key, not a session.
+app.use('/api/v1', cors({ origin: true }), express.json({ limit: '256kb' }), requireApiKey, publicApiRouter);
 
 app.use(cors({
   origin: corsOrigin,

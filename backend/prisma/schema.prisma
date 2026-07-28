@@ -137,6 +137,7 @@ model Tenant {
   jobs         Job[]
   campaigns    Campaign[]
   payments     Payment[]
+  apiKeys      ApiKey[]
   // Real-estate domain (added in phase-2 integration)
   deals        Deal[]
   properties   Property[]
@@ -557,4 +558,32 @@ model Payment {
 
   @@unique([provider, providerRef])
   @@index([tenantId, createdAt])
+}
+
+// Per-tenant API credentials for external systems (Make, Zapier, a customer's own
+// backend). This is what makes the PRO plan's advertised "API access" real.
+//
+// The plaintext key is shown exactly once, at creation, and never stored: only its
+// SHA-256 lives here. A leaked database therefore yields no usable credential, and
+// "show me the key again" is deliberately impossible — you rotate instead.
+model ApiKey {
+  id         String    @id @default(cuid())
+  tenantId   String
+  tenant     Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Human label so a tenant with several integrations can tell them apart.
+  name       String
+  // SHA-256 of the key. UNIQUE so authentication is a single indexed lookup rather
+  // than a scan-and-compare over every key in the system.
+  keyHash    String    @unique
+  // Leading characters of the key, safe to display — enough to match a key against
+  // whatever the customer has pasted into Make, without revealing the secret.
+  prefix     String
+  lastUsedAt DateTime?
+  // Revoked keys are kept, not deleted: the audit trail of what once had access is
+  // worth more than the row it occupies.
+  revokedAt  DateTime?
+  createdBy  String?
+  createdAt  DateTime  @default(now())
+
+  @@index([tenantId])
 }

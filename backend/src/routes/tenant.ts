@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import { prisma } from '../lib/prisma';
 import { checkLimit, entitlementsFor, trialStatusOf, accountStatusOf } from '../lib/entitlements';
 import { cancelTenant, reactivateTenant } from '../lib/offboarding';
+import { issueApiKey } from '../lib/apiKeys';
 
 export const tenantRouter = Router();
 
@@ -455,5 +456,56 @@ tenantRouter.delete('/users/:id', async (req: Request, res: Response) => {
   }
 
   await prisma.user.delete({ where: { id: req.params.id } });
+  return res.status(204).send();
+});
+
+// ─── API keys ─────────────────────────────────────────────────────────────────
+// Credentials for external systems. Admin-only, like the rest of the account-level
+// surface: an API key is standing access to every lead in the tenant.
+
+// GET /api/tenant/api-keys — the keys, minus the secrets (which we cannot recover).
+tenantRouter.get('/api-keys', async (req: Request, res: Response) => {
+  if (!requireTenantAdmin(req, res)) return;
+  const keys = await prisma.apiKey.findMany({
+    where: { tenantId: req.user!.tenantId },
+    orderBy: { createdAt: 'desc' },
+    select: { id: true, name: true, prefix: true, lastUsedAt: true, revokedAt: true, createdAt: true, createdBy: true },
+  });
+  return res.json({
+    keys,
+    available: entitlementsFor((await prisma.tenant.findUnique({ where: { id: req.user!.tenantId }, select: { plan: true } }))!.plan).features.apiAccess,
+  });
+});
+
+// POST /api/tenant/api-keys — issue one. The plaintext in this response is the only
+// time it exists outside the caller's own storage.
+tenantRouter.post('/api-keys', async (req: Request, res: Response) => {
+  if (!requireTenantAdmin(req, res)) return;
+  const tenant = await prisma.tenant.findUnique({ where: { id: req.user!.tenantId }, select: { plan: true } });
+  if (!tenant || !entitlementsFor(tenant.plan).features.apiAccess) {
+    return res.status(403).json({ error: 'גישת API זמינה במסלול PRO', upgrade: true, feature: 'apiAccess' });
+  }
+  const active = await prisma.apiKey.count({ where: { tenantId: req.user!.tenantId, revokedAt: null } });
+  if (active >= 10) return res.status(400).json({ error: 'הגעת למקסימום 10 מפתחות פעילים — בטל מפתח קיים' });
+
+  const name = String((req.body as { name?: unknown })?.name ?? '').trim();
+  const issued = await issueApiKey(req.user!.tenantId, name, req.user!.username);
+  return res.status(201).json({
+    id: issued.id,
+    prefix: issued.prefix,
+    key: issued.key,
+    note: 'שמור את המפתח עכשיו — לא נוכל להציג אותו שוב.',
+  });
+});
+
+// DELETE /api/tenant/api-keys/:id — revoke. The row stays: knowing what once had
+// access is worth more than the space it takes.
+tenantRouter.delete('/api-keys/:id', async (req: Request, res: Response) => {
+  if (!requireTenantAdmin(req, res)) return;
+  const done = await prisma.apiKey.updateMany({
+    where: { id: req.params.id, tenantId: req.user!.tenantId, revokedAt: null },
+    data: { revokedAt: new Date() },
+  });
+  if (done.count === 0) return res.status(404).json({ error: 'מפתח לא נמצא' });
   return res.status(204).send();
 });

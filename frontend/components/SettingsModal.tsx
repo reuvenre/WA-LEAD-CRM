@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react';
 import { X, ShieldCheck, Lock, CheckCircle, AlertCircle, Eye, EyeOff, Wifi, Check, UserCircle, Building2, Mail, Users, Plus, ToggleLeft, ToggleRight, CalendarDays, Trash2, MessageSquareText, Bot, KeyRound, Globe, Copy, Bell, Download, LifeBuoy, RotateCcw, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { api, type AutoRepliesConfig } from '@/lib/api';
+import { api, type AutoRepliesConfig, type ApiKeyRow } from '@/lib/api';
 import { useConfirm } from './useConfirm';
 import { usePush } from '@/hooks/usePush';
 import { decodeToken } from '@/lib/auth';
@@ -26,7 +26,7 @@ async function authFetch(path: string, body?: object, method?: string) {
 
 interface SettingsModalProps { onClose: () => void; }
 
-type Tab = 'profile' | 'agents' | 'templates' | '2fa' | 'password' | 'green-api' | 'google' | 'engagement' | 'widget' | 'notifications' | 'account';
+type Tab = 'profile' | 'agents' | 'templates' | '2fa' | 'password' | 'green-api' | 'google' | 'engagement' | 'widget' | 'notifications' | 'api' | 'account';
 
 export function SettingsModal({ onClose }: SettingsModalProps) {
   const [tab, setTab] = useState<Tab>('profile');
@@ -59,6 +59,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           <TabBtn active={tab === 'google'} onClick={() => setTab('google')} icon={<CalendarDays className="w-3.5 h-3.5" />} label="יומן" />
           <TabBtn active={tab === '2fa'} onClick={() => setTab('2fa')} icon={<ShieldCheck className="w-3.5 h-3.5" />} label="2FA" />
           <TabBtn active={tab === 'password'} onClick={() => setTab('password')} icon={<Lock className="w-3.5 h-3.5" />} label="סיסמה" />
+          {isAdmin && <TabBtn active={tab === 'api'} onClick={() => setTab('api')} icon={<KeyRound className="w-3.5 h-3.5" />} label="API" />}
           {isAdmin && <TabBtn active={tab === 'account'} onClick={() => setTab('account')} icon={<LifeBuoy className="w-3.5 h-3.5" />} label="חשבון" />}
         </div>
 
@@ -70,6 +71,7 @@ export function SettingsModal({ onClose }: SettingsModalProps) {
           {tab === 'widget' && <WidgetSettings />}
           {tab === 'green-api' && <GreenApiSettings />}
           {tab === 'notifications' && <NotificationsSettings />}
+          {tab === 'api' && <ApiKeysSettings />}
           {tab === 'google' && <GoogleCalendarSettings />}
           {tab === '2fa' && <TwoFactorSetup />}
           {tab === 'password' && <ChangePassword onDone={onClose} />}
@@ -1391,3 +1393,145 @@ function TabBtn({ active, onClick, icon, label }: { active: boolean; onClick: ()
 }
 
 const inputCls = 'w-full px-3 py-2.5 text-sm rounded-lg border border-surface-border bg-surface-muted placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-brand-500 focus:border-transparent transition font-mono';
+
+// ─── API keys ─────────────────────────────────────────────────────────────────
+// Credentials for external systems. The plaintext key exists in this component's
+// state for exactly as long as the modal is open after creating it — the server
+// cannot return it again, so the copy affordance has to be unmissable.
+function ApiKeysSettings() {
+  const [keys, setKeys] = useState<ApiKeyRow[]>([]);
+  const [available, setAvailable] = useState(true);
+  const [loading, setLoading] = useState(true);
+  const [name, setName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [fresh, setFresh] = useState<{ key: string; prefix: string } | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const load = async () => {
+    try {
+      const r = await api.apiKeys.list();
+      setKeys(r.keys);
+      setAvailable(r.available);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'שגיאה');
+    } finally {
+      setLoading(false);
+    }
+  };
+  useEffect(() => { void load(); }, []);
+
+  const create = async () => {
+    setCreating(true); setError(null);
+    try {
+      const r = await api.apiKeys.create(name);
+      setFresh({ key: r.key, prefix: r.prefix });
+      setName('');
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'שגיאה');
+    } finally {
+      setCreating(false);
+    }
+  };
+
+  const revoke = async (id: string, label: string) => {
+    if (!confirm(`לבטל את המפתח "${label}"? כל אינטגרציה שמשתמשת בו תפסיק לעבוד מיד.`)) return;
+    try { await api.apiKeys.revoke(id); await load(); }
+    catch (e) { setError(e instanceof Error ? e.message : 'שגיאה'); }
+  };
+
+  const copy = async () => {
+    if (!fresh) return;
+    await navigator.clipboard.writeText(fresh.key);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  if (loading) return <div className="text-sm text-slate-400 py-6 text-center">טוען…</div>;
+
+  if (!available) {
+    return (
+      <div className="text-center py-8">
+        <KeyRound className="w-10 h-10 mx-auto text-slate-300" />
+        <h3 className="mt-3 font-bold text-slate-700">גישת API</h3>
+        <p className="mt-1 text-sm text-slate-500 max-w-sm mx-auto">
+          חבר את המערכת ל-Make, ל-Zapier או למערכת שלך — למשל כדי לקלוט לידים מקמפיין פייסבוק ישירות לתיבה.
+          זמין במסלול PRO.
+        </p>
+      </div>
+    );
+  }
+
+  const active = keys.filter((k) => !k.revokedAt);
+
+  return (
+    <div className="space-y-4">
+      <p className="text-xs text-slate-500 leading-relaxed">
+        מפתח API מאפשר למערכת חיצונית ליצור ולקרוא לידים. שליחה:{' '}
+        <code className="bg-slate-100 px-1 rounded">POST {process.env.NEXT_PUBLIC_API_URL}/api/v1/leads</code>{' '}
+        עם הכותרת <code className="bg-slate-100 px-1 rounded">Authorization: Bearer &lt;key&gt;</code>.
+      </p>
+
+      {fresh && (
+        <div className="rounded-xl border border-green-200 bg-green-50 p-3 space-y-2">
+          <div className="text-sm font-bold text-green-800">המפתח נוצר — העתק אותו עכשיו</div>
+          <div className="text-xs text-green-700">לא נוכל להציג אותו שוב. אם תאבד אותו, תצטרך ליצור מפתח חדש.</div>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 bg-white border border-green-200 rounded-lg px-2 py-1.5 text-[11px] break-all">{fresh.key}</code>
+            <button onClick={copy} className="flex-shrink-0 px-3 py-1.5 rounded-lg bg-green-600 hover:bg-green-700 text-white text-xs font-semibold inline-flex items-center gap-1">
+              {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+              {copied ? 'הועתק' : 'העתק'}
+            </button>
+          </div>
+          <button onClick={() => setFresh(null)} className="text-xs text-green-700 underline">שמרתי — סגור</button>
+        </div>
+      )}
+
+      {error && <div className="rounded-lg bg-red-50 border border-red-200 px-3 py-2 text-xs text-red-700">{error}</div>}
+
+      <div className="flex items-center gap-2">
+        <input
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="שם המפתח (למשל: Make — לידים מפייסבוק)"
+          maxLength={60}
+          className="flex-1 border border-surface-border rounded-lg px-3 py-2 text-sm"
+        />
+        <button
+          onClick={create}
+          disabled={creating || active.length >= 10}
+          className="px-3 py-2 rounded-lg bg-brand-600 hover:bg-brand-700 disabled:opacity-50 text-white text-sm font-semibold inline-flex items-center gap-1.5"
+        >
+          {creating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />} צור מפתח
+        </button>
+      </div>
+
+      {keys.length === 0 ? (
+        <div className="text-sm text-slate-400 text-center py-4">אין מפתחות עדיין</div>
+      ) : (
+        <div className="space-y-1.5">
+          {keys.map((k) => (
+            <div key={k.id} className={`flex items-center gap-3 border border-surface-border rounded-lg px-3 py-2 ${k.revokedAt ? 'opacity-50' : ''}`}>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-semibold text-slate-700 truncate">
+                  {k.name} {k.revokedAt && <span className="text-xs font-normal text-red-600">(בוטל)</span>}
+                </div>
+                <div className="text-[11px] text-slate-400">
+                  <code>{k.prefix}…</code>
+                  {' · '}
+                  {k.lastUsedAt ? `שימוש אחרון: ${new Date(k.lastUsedAt).toLocaleDateString('he-IL')}` : 'לא היה בשימוש'}
+                </div>
+              </div>
+              {!k.revokedAt && (
+                <button onClick={() => revoke(k.id, k.name)} className="flex-shrink-0 text-red-600 hover:text-red-700 p-1" aria-label="בטל מפתח">
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
