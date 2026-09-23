@@ -437,7 +437,13 @@ authRouter.post('/forgot-password', async (req: Request, res: Response) => {
       }
     }
   } catch (err) {
+    // Anti-enumeration only ever covers "does this email exist" — the uniform success
+    // above handles that. An infrastructure failure (database down, SMTP refused) is a
+    // different thing: it fires the same way whether or not the address exists, so
+    // reporting it leaks nothing, and swallowing it tells the customer "sent" when
+    // nothing was. That is exactly how a paused database went unnoticed for weeks.
     console.error('Forgot password error:', err);
+    return res.status(503).json({ error: 'שירות האיפוס אינו זמין כרגע — נסה שוב בעוד מספר דקות.' });
   }
 
   return res.json({ success: true, message: 'אם הכתובת קיימת במערכת, נשלח קישור לאיפוס' });
